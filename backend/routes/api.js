@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
-// const { processJson } = require('../controllers/processJson');
+const { processJson } = require('../controllers/processJson');
 
 // In-memory storage for simulation data
 let simulationData = [];
@@ -45,6 +45,6 @@ router.post('/simulation/sync', (req, res) => {
   }
 });
 
-// router.post('/upload-json', upload.single('jsonFile'), processJson);
+router.post('/upload-json', upload.single('jsonFile'), processJson);
 
 module.exports = router;
