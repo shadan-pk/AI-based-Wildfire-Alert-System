@@ -120,7 +120,7 @@ const UploadJson = () => {
 
         {message && (
           <div className={`mt-4 p-3 rounded-md text-center ${
-            message.includes('successful') 
+            message.includes('Predictions') 
               ? 'bg-green-100 text-green-800' 
               : 'bg-red-100 text-red-800'
           }`}>

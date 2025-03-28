@@ -111,14 +111,23 @@ const Simulation = () => {
     <div className="container mx-auto px-4 py-6 max-w-6xl">
       {/* Header */}
       <div className="text-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">
+        <h1 className="text-3xl font-bold text-white mb-2">
           Create Simulation Data
         </h1>
-        <p className="text-gray-600">Select a location and generate simulation data</p>
+        <p className="text-gray-200">Select a location and generate simulation data</p>
       </div>
 
       {/* Map Section */}
       <div className="mb-6 shadow-lg rounded-lg overflow-hidden">
+      <div className="bg-gray-800 p-3 rounded-t-lg flex justify-between items-center">
+          <div className="flex items-center space-x-2">
+            <span className="w-3 h-3 bg-red-500 rounded-full" />
+            <span className="w-3 h-3 bg-yellow-500 rounded-full" />
+            <span className="w-3 h-3 bg-green-500 rounded-full" />
+            </div>
+
+          <h2 className="text-white font-semibold">Simuation Map</h2>
+          </div>
         <Map
           ref={mapRef}
           center={DEFAULT_CENTER}
@@ -127,6 +136,7 @@ const Simulation = () => {
           className="w-full h-96"
         />
       </div>
+      
 
       {/* Action Buttons */}
       <div className="flex justify-center space-x-4 mb-6">
