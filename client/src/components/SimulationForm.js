@@ -32,27 +32,165 @@ const SimulationForm = ({ lat, lon, onSubmit }) => {
     }
   };
 
+
   return (
-    <form onSubmit={handleSubmit} style={styles.form}>
-      <input type="number" name="temperature_2m" placeholder="Temperature (2m)" value={formData.temperature_2m} onChange={handleChange} style={styles.input} />
-      <input type="number" name="relative_humidity_2m" placeholder="Relative Humidity (2m)" value={formData.relative_humidity_2m} onChange={handleChange} style={styles.input} />
-      <input type="number" name="wind_speed_10m" placeholder="Wind Speed (10m)" value={formData.wind_speed_10m} onChange={handleChange} style={styles.input} />
-      <input type="number" name="precipitation" placeholder="Precipitation" value={formData.precipitation} onChange={handleChange} style={styles.input} />
-      <input type="number" name="FFMC" placeholder="FFMC" value={formData.FFMC} onChange={handleChange} style={styles.input} />
-      <input type="number" name="DMC" placeholder="DMC" value={formData.DMC} onChange={handleChange} style={styles.input} />
-      <input type="number" name="DC" placeholder="DC" value={formData.DMC} onChange={handleChange} style={styles.input} />
-      <input type="number" name="ISI" placeholder="ISI" value={formData.ISI} onChange={handleChange} style={styles.input} />
-      <input type="number" name="BUI" placeholder="BUI" value={formData.BUI} onChange={handleChange} style={styles.input} />
-      <input type="number" name="FWI" placeholder="FWI" value={formData.FWI} onChange={handleChange} style={styles.input} />
-      <button type="submit" style={styles.button}>Submit</button>
-    </form>
+    <div className="max-w-xl mx-auto p-6 bg-white shadow-lg rounded-lg">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="temperature_2m" className="block text-sm font-medium text-gray-700 mb-1">
+              Temperature (2m)
+            </label>
+            <input 
+              id="temperature_2m"
+              type="number" 
+              name="temperature_2m" 
+              placeholder="Enter temperature" 
+              value={formData.temperature_2m} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="relative_humidity_2m" className="block text-sm font-medium text-gray-700 mb-1">
+              Relative Humidity (2m)
+            </label>
+            <input 
+              id="relative_humidity_2m"
+              type="number" 
+              name="relative_humidity_2m" 
+              placeholder="Enter humidity" 
+              value={formData.relative_humidity_2m} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="wind_speed_10m" className="block text-sm font-medium text-gray-700 mb-1">
+              Wind Speed (10m)
+            </label>
+            <input 
+              id="wind_speed_10m"
+              type="number" 
+              name="wind_speed_10m" 
+              placeholder="Enter wind speed" 
+              value={formData.wind_speed_10m} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="precipitation" className="block text-sm font-medium text-gray-700 mb-1">
+              Precipitation
+            </label>
+            <input 
+              id="precipitation"
+              type="number" 
+              name="precipitation" 
+              placeholder="Enter precipitation" 
+              value={formData.precipitation} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="FFMC" className="block text-sm font-medium text-gray-700 mb-1">
+              FFMC
+            </label>
+            <input 
+              id="FFMC"
+              type="number" 
+              name="FFMC" 
+              placeholder="Enter FFMC" 
+              value={formData.FFMC} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="DMC" className="block text-sm font-medium text-gray-700 mb-1">
+              DMC
+            </label>
+            <input 
+              id="DMC"
+              type="number" 
+              name="DMC" 
+              placeholder="Enter DMC" 
+              value={formData.DMC} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="DC" className="block text-sm font-medium text-gray-700 mb-1">
+              DC
+            </label>
+            <input 
+              id="DC"
+              type="number" 
+              name="DC" 
+              placeholder="Enter DC" 
+              value={formData.DC} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="ISI" className="block text-sm font-medium text-gray-700 mb-1">
+              ISI
+            </label>
+            <input 
+              id="ISI"
+              type="number" 
+              name="ISI" 
+              placeholder="Enter ISI" 
+              value={formData.ISI} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="BUI" className="block text-sm font-medium text-gray-700 mb-1">
+              BUI
+            </label>
+            <input 
+              id="BUI"
+              type="number" 
+              name="BUI" 
+              placeholder="Enter BUI" 
+              value={formData.BUI} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="FWI" className="block text-sm font-medium text-gray-700 mb-1">
+              FWI
+            </label>
+            <input 
+              id="FWI"
+              type="number" 
+              name="FWI" 
+              placeholder="Enter FWI" 
+              value={formData.FWI} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+        </div>
+        
+        <div className="mt-6">
+          <button 
+            type="submit" 
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-300"
+          >
+            Submit
+          </button>
+        </div>
+      </form>
+    </div>
   );
 };
 
-const styles = {
-  form: { display: 'flex', flexDirection: 'column', gap: '10px' },
-  input: { padding: '5px' },
-  button: { padding: '5px 10px', cursor: 'pointer' },
-};
 
 export default SimulationForm;
