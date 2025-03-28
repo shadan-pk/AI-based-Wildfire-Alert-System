@@ -5,6 +5,8 @@ import LandingPage from './pages/LandingPage';
 import Simulation from './pages/Simulation';
 import Visualizer from './pages/Visualizer';
 import Dashboard from './pages/Dashboard';
+import UploadJson from './pages/UploadJson';
+
 
 function App() {
   return (
@@ -14,6 +16,7 @@ function App() {
         <Route path="/simulation" element={<Simulation />} />
         <Route path="/visualizer" element={<Visualizer />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/upload-json" element={<UploadJson />} />
       </Routes>
     </Layout>
   );

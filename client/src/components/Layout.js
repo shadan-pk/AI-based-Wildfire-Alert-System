@@ -11,6 +11,7 @@ const Layout = ({ children }) => {
           <ul className="sidebar-menu">
             <li><Link to="/">Home</Link></li>
             <li><Link to="/simulation">Simulation</Link></li>
+            <li><Link to="/upload-json">Prediction</Link></li>
             <li><Link to="/visualizer">Visualizer</Link></li>
             <li><Link to="/dashboard">Dashboard</Link></li>
           </ul>

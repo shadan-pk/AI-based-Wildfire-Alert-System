@@ -146,7 +146,7 @@ const Simulation = () => {
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M5 2a1 1 0 011 1v4h1V3a1 1 0 112 0v4h1V3a1 1 0 112 0v4h1V3a1 1 0 112 0v4h1a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h1zm-1 8v5a1 1 0 001 1h10a1 1 0 001-1v-5H4z" clipRule="evenodd" />
           </svg>
-          <span>Reset to Center</span>
+          <span>Reset to Home</span>
         </button>
       </div>
 
