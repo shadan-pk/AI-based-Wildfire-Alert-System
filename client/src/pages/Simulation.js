@@ -3,6 +3,48 @@ import axios from 'axios';
 import Map from '../components/Map';
 import SimulationForm from '../components/SimulationForm';
 
+// Simulation Point Modal Component
+const SimulationPointModal = ({ 
+  selectedPoint, 
+  onClose, 
+  onSubmit 
+}) => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-white w-full max-w-2xl mx-4 rounded-lg shadow-xl relative">
+        {/* Close Button */}
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        {/* Modal Content */}
+        <div className="p-6">
+          <h3 className="text-xl font-semibold text-gray-700 mb-4">
+            Selected Location: 
+            <span className="text-blue-600 ml-2">
+              ({selectedPoint.lat.toFixed(4)}, {selectedPoint.lon.toFixed(4)})
+            </span>
+          </h3>
+          
+          <SimulationForm
+            lat={selectedPoint.lat}
+            lon={selectedPoint.lon}
+            onSubmit={(submittedData) => {
+              onSubmit(submittedData);
+              onClose();
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Simulation = () => {
   const [selectedPoint, setSelectedPoint] = useState(null);
   const [simulationList, setSimulationList] = useState([]);
@@ -16,7 +58,11 @@ const Simulation = () => {
   };
 
   const handleFormSubmit = (submittedData) => {
-    setSimulationList((prevList) => [...prevList, submittedData]);
+    setSimulationList((prevList) => [...prevList, {
+      ...submittedData,
+      lat: selectedPoint.lat,
+      lon: selectedPoint.lon
+    }]);
     setSelectedPoint(null);
   };
 
@@ -104,23 +150,6 @@ const Simulation = () => {
         </button>
       </div>
 
-      {/* Selected Point Information */}
-      {selectedPoint && (
-        <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-          <h3 className="text-xl font-semibold text-gray-700 mb-4">
-            Selected Location: 
-            <span className="text-blue-600 ml-2">
-              ({selectedPoint.lat.toFixed(4)}, {selectedPoint.lon.toFixed(4)})
-            </span>
-          </h3>
-          <SimulationForm
-            lat={selectedPoint.lat}
-            lon={selectedPoint.lon}
-            onSubmit={handleFormSubmit}
-          />
-        </div>
-      )}
-
       {/* Simulation Data List */}
       <div className="bg-white shadow-md rounded-lg p-6">
         <h3 className="text-xl font-semibold text-gray-700 mb-4">
@@ -158,74 +187,17 @@ const Simulation = () => {
           </div>
         )}
       </div>
+
+      {/* Simulation Point Modal */}
+      {selectedPoint && (
+        <SimulationPointModal 
+          selectedPoint={selectedPoint}
+          onClose={() => setSelectedPoint(null)}
+          onSubmit={handleFormSubmit}
+        />
+      )}
     </div>
   );
-};
-const styles = {
-  container: {
-    padding: '20px',
-    maxWidth: '1200px',
-    margin: '0 auto',
-    backgroundColor: '#f9f9f9',
-    borderRadius: '8px',
-    boxShadow: '0 2px 5px rgba(0, 0, 0, 0.1)',
-  },
-  header: {
-    fontSize: '44px',
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: '20px',
-    textAlign: 'center',
-  },
-  formContainer: {
-    marginTop: '20px',
-    padding: '15px',
-    backgroundColor: '#fff',
-    borderRadius: '6px',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-  },
-  h3: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  subHeader: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    marginTop: '60px',
-    color: '#555',
-  },
-  deleteButton: {
-    backgroundColor: '#f44336',
-    color: '#fff',
-    border: 'none',
-    padding: '8px 12px',
-    borderRadius: '4px',
-  },
-  downloadButton: {
-    backgroundColor: '#4CAF50',
-    color: '#fff',
-    border: 'none',
-    padding: '8px 12px',
-    borderRadius: '4px',
-    marginLeft: '10px',
-    marginRight: '10px',
-  },
-  resetButton: {
-    backgroundColor: '#008CBA',
-    color: '#fff',
-    border: 'none',
-    padding: '8px 12px',
-    borderRadius: '4px',
-    // marginBottom: '10px',
-  },
-  buttonContainer: {
-    display: 'flex',
-    justifyContent: 'right',
-    alignItems: 'center',
-    marginBottom: '10px',
-    marginTop: '10px',
-  },
 };
 
 export default Simulation;
