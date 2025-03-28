@@ -1,120 +1,58 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
-import '../css/SimulationMap.css';
 
-const SimulationFormModal = ({ isOpen, onClose, onSave, initialData }) => {
-  const [data, setData] = useState(initialData || {
-    Temperature: 0,
-    RH: 0,
-    Ws: 0,
-    Rain: 0,
-    FFMC: 0,
-    DMC: 0,
-    DC: 0,
-    ISI: 0,
-    BUI: 0,
-    FWI: 0,
+const SimulationForm = ({ lat, lon, onSubmit }) => {
+  const [formData, setFormData] = useState({
+    temperature_2m: '0',
+    relative_humidity_2m: '0',
+    wind_speed_10m: '0',
+    precipitation: '0',
+    FFMC: '0',
+    DMC: '0',
+    DC: '0',
+    ISI: '0',
+    BUI: '0',
+    FWI: '0',
   });
 
   const handleChange = (e) => {
-    setData({ ...data, [e.target.name]: parseFloat(e.target.value) });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSave(data);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="modal">
-      <form onSubmit={handleSubmit}>
-        {Object.keys(data).map((key) => (
-          <div key={key}>
-            <label>{key}: </label>
-            <input
-              type="number"
-              name={key}
-              value={data[key]}
-              onChange={handleChange}
-              step="0.1"
-            />
-          </div>
-        ))}
-        <button type="submit">Done</button>
-        <button type="button" onClick={onClose}>Cancel</button>
-      </form>
-    </div>
-  );
-};
-
-const SimulationForm = ({ lat: initialLat, lon: initialLon }) => {
-  const [points, setPoints] = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [currentPosition, setCurrentPosition] = useState({ lat: initialLat, lon: initialLon });
-
-  // Update currentPosition when props change
-  useEffect(() => {
-    setCurrentPosition({ lat: initialLat, lon: initialLon });
-  }, [initialLat, initialLon]);
-
-  const handleAddData = () => {
-    setShowForm(true);
-  };
-
-  const handleSaveData = async (data) => {
+    const data = { lat, lon, data: { ...formData } }; // Combine lat, lon, and form data
     try {
-      const newPoint = { 
-        lat: currentPosition.lat, 
-        lon: currentPosition.lon, 
-        data 
-      };
-      await axios.post(`${process.env.REACT_APP_API_URL}/simulation`, newPoint);
-      setPoints([...points, newPoint]);
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/simulation`, data);
+      console.log('Server response:', response.data);
+      onSubmit(data); // Pass the submitted data back to Simulation.js
     } catch (error) {
-      console.error('Error saving simulation data:', error);
+      console.error('Form submission error:', error);
+      alert('Failed to submit simulation data');
     }
   };
 
-  const handleDeletePoint = (index) => {
-    setPoints(points.filter((_, i) => i !== index));
-  };
-
-  const handleDownloadJSON = () => {
-    const jsonData = JSON.stringify(points, null, 2);
-    const blob = new Blob([jsonData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'simulation_data.json';
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
-    <div className="simulation-container">
-      <button className="add-data-btn" onClick={handleAddData}>Add Data</button>
-      <button className="download-btn" onClick={handleDownloadJSON}>Download JSON</button>
-      
-      <SimulationFormModal
-        isOpen={showForm}
-        onClose={() => setShowForm(false)}
-        onSave={handleSaveData}
-      />
-
-      <div className="points-list">
-        <h3>Marked Points:</h3>
-        {points.map((point, index) => (
-          <div key={index} className="point-item">
-            Point {index + 1}: Lat: {point.lat.toFixed(4)}, Lon: {point.lon.toFixed(4)}
-            <button className="delete-btn" onClick={() => handleDeletePoint(index)}>Delete</button>
-          </div>
-        ))}
-      </div>
-    </div>
+    <form onSubmit={handleSubmit} style={styles.form}>
+      <input type="number" name="temperature_2m" placeholder="Temperature (2m)" value={formData.temperature_2m} onChange={handleChange} style={styles.input} />
+      <input type="number" name="relative_humidity_2m" placeholder="Relative Humidity (2m)" value={formData.relative_humidity_2m} onChange={handleChange} style={styles.input} />
+      <input type="number" name="wind_speed_10m" placeholder="Wind Speed (10m)" value={formData.wind_speed_10m} onChange={handleChange} style={styles.input} />
+      <input type="number" name="precipitation" placeholder="Precipitation" value={formData.precipitation} onChange={handleChange} style={styles.input} />
+      <input type="number" name="FFMC" placeholder="FFMC" value={formData.FFMC} onChange={handleChange} style={styles.input} />
+      <input type="number" name="DMC" placeholder="DMC" value={formData.DMC} onChange={handleChange} style={styles.input} />
+      <input type="number" name="DC" placeholder="DC" value={formData.DMC} onChange={handleChange} style={styles.input} />
+      <input type="number" name="ISI" placeholder="ISI" value={formData.ISI} onChange={handleChange} style={styles.input} />
+      <input type="number" name="BUI" placeholder="BUI" value={formData.BUI} onChange={handleChange} style={styles.input} />
+      <input type="number" name="FWI" placeholder="FWI" value={formData.FWI} onChange={handleChange} style={styles.input} />
+      <button type="submit" style={styles.button}>Submit</button>
+    </form>
   );
+};
+
+const styles = {
+  form: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  input: { padding: '5px' },
+  button: { padding: '5px 10px', cursor: 'pointer' },
 };
 
 export default SimulationForm;
