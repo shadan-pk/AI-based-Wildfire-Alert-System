@@ -1,7 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const mongoose = require('mongoose');
-const { getPredictionConnection } = require('../server');
+const dbConnection = require('../database-connection');
 
 const predictionSchema = new mongoose.Schema({
   lat: { type: Number, required: true },
@@ -44,7 +44,10 @@ exports.processJson = async (req, res) => {
 
       try {
         const predictionArray = JSON.parse(predictions);
-        const predictionConnection = getPredictionConnection(); // Use getter
+        
+        // Use the function from the database connection module
+        const predictionConnection = dbConnection.getPredictionConnection();
+        
         const PredictionModel = predictionConnection.model('Prediction', predictionSchema, collectionName);
         await PredictionModel.insertMany(predictionArray);
         res.status(200).json({ message: `Predictions stored in collection '${collectionName}'` });

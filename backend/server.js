@@ -1,14 +1,10 @@
 const express = require('express');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
 const cors = require('cors');
 const apiRoutes = require('./routes/api');
-
-dotenv.config();
+const dbConnection = require('./database-connection'); // Import the new database connection module
 
 const app = express();
 
-// Enable CORS
 app.use(cors({
   origin: 'http://localhost:3000',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -17,39 +13,17 @@ app.use(cors({
 
 app.use(express.json());
 
-// MongoDB connection to "prediction" database
-const predictionConnectionPromise = mongoose.createConnection(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  dbName: 'prediction',
-}).asPromise();
+// Connect to the database before starting the server
+dbConnection.connect()
+  .then(() => {
+    app.use('/api', apiRoutes);
 
-let predictionConnection;
-
-predictionConnectionPromise
-  .then((conn) => {
-    predictionConnection = conn;
-    console.log('predictionConnection initialized:', predictionConnection);
-    predictionConnection.on('connected', () => console.log('Connected to prediction database'));
-    predictionConnection.on('error', (err) => console.error('Prediction database connection error:', err));
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
-  .catch((err) => {
-    console.error('Failed to initialize predictionConnection:', err);
+  .catch(err => {
+    console.error('Failed to connect to database:', err);
+    process.exit(1);
   });
 
-// Export predictionConnection and app
-module.exports = {
-  getPredictionConnection: () => {
-    if (!predictionConnection) {
-      throw new Error('predictionConnection not yet initialized');
-    }
-    return predictionConnection;
-  },
-  app,
-};
-
-// Routes
-app.use('/api', apiRoutes);
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+module.exports = app;
