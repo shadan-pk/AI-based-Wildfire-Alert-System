@@ -1,33 +1,54 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const cors = require('cors'); // Add this
+const cors = require('cors');
 const apiRoutes = require('./routes/api');
 
 dotenv.config();
 
 const app = express();
 
-// Enable CORS for http://localhost:3000
+// Enable CORS
 app.use(cors({
-  origin: 'http://localhost:3000', // Allow only this origin
-  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed methods
-  allowedHeaders: ['Content-Type'], // Allowed headers
+  origin: 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type'],
 }));
 
 app.use(express.json());
 
-const predictionConnection = mongoose.createConnection(process.env.MONGODB_URI, {
+// MongoDB connection to "prediction" database
+const predictionConnectionPromise = mongoose.createConnection(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
   dbName: 'prediction',
-});
+}).asPromise();
 
-predictionConnection.on('connected', () => console.log('Connected to prediction database'));
-predictionConnection.on('error', (err) => console.error('Prediction database connection error:', err));
+let predictionConnection;
 
-module.exports = { predictionConnection, app };
+predictionConnectionPromise
+  .then((conn) => {
+    predictionConnection = conn;
+    console.log('predictionConnection initialized:', predictionConnection);
+    predictionConnection.on('connected', () => console.log('Connected to prediction database'));
+    predictionConnection.on('error', (err) => console.error('Prediction database connection error:', err));
+  })
+  .catch((err) => {
+    console.error('Failed to initialize predictionConnection:', err);
+  });
 
+// Export predictionConnection and app
+module.exports = {
+  getPredictionConnection: () => {
+    if (!predictionConnection) {
+      throw new Error('predictionConnection not yet initialized');
+    }
+    return predictionConnection;
+  },
+  app,
+};
+
+// Routes
 app.use('/api', apiRoutes);
 
 const PORT = process.env.PORT || 5000;
