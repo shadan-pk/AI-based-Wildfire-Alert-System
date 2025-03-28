@@ -1,5 +1,5 @@
 const { spawn } = require('child_process');
-const path = require('path');
+const path = require('path'); // Fix: Use built-in path module
 const mongoose = require('mongoose');
 const { predictionConnection } = require('../server');
 
@@ -16,16 +16,17 @@ exports.processJson = async (req, res) => {
     if (!collectionName || typeof collectionName !== 'string') {
       return res.status(400).json({ error: 'Valid collection name is required' });
     }
-
+    
     // Validate file upload
     if (!req.file || !req.file.buffer) {
-      return res.status(400).json({ error: 'No JSON file uploaded' });
+        return res.status(400).json({ error: 'No JSON file uploaded' });
     }
-
+    
     const jsonData = req.file.buffer.toString('utf8');
-
+    
     // Spawn Python process
-    const scriptPath = path.join(__dirname, '..', 'scripts', 'script.py');
+    const scriptPath = path.join(__dirname, '..', 'scripts', 'predict.py');
+    console.log('Script path:', scriptPath);
     const pythonProcess = spawn('python', [scriptPath]);
 
     // Send JSON data to Python script
@@ -64,6 +65,7 @@ exports.processJson = async (req, res) => {
     });
   } catch (error) {
     console.error('Process JSON error:', error);
+    console.log('Script path:', scriptPath);
     res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };

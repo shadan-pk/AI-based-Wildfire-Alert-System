@@ -1,0 +1,34 @@
+[
+  {
+    "lat": 11.038970510638919,
+    "lon": 76.26318041123113,
+    "data": {
+      "temperature_2m": 0,
+      "relative_humidity_2m": 0,
+      "wind_speed_10m": 0,
+      "precipitation": 0,
+      "FFMC": 0,
+      "DMC": 0,
+      "DC": 0,
+      "ISI": 0,
+      "BUI": 0,
+      "FWI": 0
+    }
+  },
+  {
+    "lat": 11.037379031526555,
+    "lon": 76.26243791685044,
+    "data": {
+      "temperature_2m": 0,
+      "relative_humidity_2m": 0,
+      "wind_speed_10m": 0,
+      "precipitation": 0,
+      "FFMC": 0,
+      "DMC": 0,
+      "DC": 0,
+      "ISI": 0,
+      "BUI": 0,
+      "FWI": 0
+    }
+  }
+]
