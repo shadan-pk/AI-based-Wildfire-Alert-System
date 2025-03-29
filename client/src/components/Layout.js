@@ -41,7 +41,7 @@ const Layout = ({ children }) => {
             <li>
               <Link 
                 to="/"
-                className="block py-3 px-4 bg-sky-100 hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
+                className="block py-3 px-4 bg-white hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
                 //font weight
                 style={{ fontWeight: 'bold' }}
               >
@@ -51,16 +51,16 @@ const Layout = ({ children }) => {
             <li>
               <Link 
                 to="/simulation"
-                className="block py-3 px-4 bg-sky-100 hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
+                className="block py-3 px-4 bg-white hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
                 style={{ fontWeight: 'bold' }}
               >
-                Simulation
+                Creation
               </Link>
             </li>
             <li>
               <Link 
                 to="/upload-json"
-                className="block py-3 px-4 bg-sky-100 hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
+                className="block py-3 px-4 bg-white hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
                 style={{ fontWeight: 'bold' }}>
                 Prediction
               </Link>
@@ -68,16 +68,16 @@ const Layout = ({ children }) => {
             <li>
               <Link 
                 to="/visualizer"
-                className="block py-3 px-4 bg-sky-100 hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
+                className="block py-3 px-4 bg-white hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
                 style={{ fontWeight: 'bold' }}
               >
-                Visualizer
+                Simulation
               </Link>
             </li>
             <li>
               <Link 
                 to="/dashboard"
-                className="block py-3 px-4 bg-sky-100 hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
+                className="block py-3 px-4 bg-white hover:bg-blue-700 hover:text-white rounded-lg transition-colors duration-300 mb-2"
                 style={{ fontWeight: 'bold' }}
               >
                 Dashboard
