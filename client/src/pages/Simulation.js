@@ -75,7 +75,7 @@ const Simulation = () => {
   const handleDownload = async () => {
     try {
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/simulation/download`, {
-        responseType: 'blob',
+      responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
@@ -87,7 +87,35 @@ const Simulation = () => {
       setSimulationList([]); // Clear frontend list after download
     } catch (error) {
       console.error('Download error:', error);
-      alert('Failed to download simulation data');
+      // Create a custom notification
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-3 rounded shadow-lg flex items-center space-x-2';
+      notification.style.zIndex = 1000;
+
+      // Add notification text
+      const text = document.createElement('span');
+      text.textContent = 'Please Ensure Data is Available to Download';
+      notification.appendChild(text);
+
+      // Add progress bar
+      const progressBar = document.createElement('div');
+      progressBar.className = 'absolute bottom-0 left-0 h-1 bg-white';
+      progressBar.style.width = '0%';
+      progressBar.style.transition = 'width 3s linear';
+      notification.appendChild(progressBar);
+
+      // Append notification to body
+      document.body.appendChild(notification);
+
+      // Start progress bar animation
+      setTimeout(() => {
+      progressBar.style.width = '95%';
+      }, 0);
+
+      // Remove notification after 3 seconds
+      setTimeout(() => {
+      notification.remove();
+      }, 3000);
     }
   };
 

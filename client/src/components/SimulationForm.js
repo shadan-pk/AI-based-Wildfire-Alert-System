@@ -21,7 +21,12 @@ const SimulationForm = ({ lat, lon, onSubmit }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const data = { lat, lon, data: { ...formData } }; // Combine lat, lon, and form data
+    //convert formData values to numbers
+    const numericData = {};
+    for (const key in formData) {
+      numericData[key] = parseFloat(formData[key]);
+    }
+    const data = { lat, lon, data:numericData }; // Combine lat, lon, and form data
     try {
       const response = await axios.post(`${process.env.REACT_APP_API_URL}/simulation`, data);
       console.log('Server response:', response.data);
