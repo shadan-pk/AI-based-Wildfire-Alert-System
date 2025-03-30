@@ -10,15 +10,14 @@ app.use(cors());
 app.use(express.json());
 
 // Connect to the database before starting the server
+let predictionDb;
 dbConnection.connect()
-  .then(() => {
-    app.use('/api', apiRoutes);
-
-    const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  .then((connection) => {
+    predictionDb = connection;
+    console.log('MongoDB connection established for prediction data');
   })
-  .catch(err => {
-    console.error('Failed to connect to database:', err);
+  .catch((err) => {
+    console.error('Failed to connect to MongoDB:', err);
     process.exit(1);
   });
 
