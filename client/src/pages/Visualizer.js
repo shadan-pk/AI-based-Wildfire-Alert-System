@@ -197,7 +197,7 @@ function Visualizer() {
         />
       </div>
       
-      <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
+      <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', backgroundColor: '#f9f9f9', padding: '10px', borderRadius: '4px' }}>
         <div>
           <strong>Active Users:</strong> {userLocations.length}
         </div>
