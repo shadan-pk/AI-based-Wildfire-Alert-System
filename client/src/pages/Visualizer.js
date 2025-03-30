@@ -11,21 +11,30 @@ function Visualizer() {
   const [isRunning, setIsRunning] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(null);
   const [error, setError] = useState(null);
+  const [heatmapRendered, setHeatmapRendered] = useState(false);
   const [stats, setStats] = useState({
     totalUsers: 0,
     safeUsers: 0,
-    unsafeUsers: 0
+    unsafeUsers: 0,
+    heatmapPoints: 0
   });
 
-
+  // Fetch available scenarios on component mount
   useEffect(() => {
     fetch('http://localhost:5000/api/scenarios')
       .then(res => res.json())
       .then(data => {
         console.log('Fetched scenarios:', data);
         setScenarios(data);
+        // Automatically select first scenario if available
+        if (data.length > 0) {
+          setSelectedScenario(data[0]);
+        }
       })
-      .catch(error => console.error('Error fetching scenarios:', error));
+      .catch(error => {
+        console.error('Error fetching scenarios:', error);
+        setError('Failed to load scenarios. Please check the server connection.');
+      });
   }, []);
 
   const handleStartSimulation = () => {
@@ -34,6 +43,7 @@ function Visualizer() {
       return;
     }
     
+    setError(null); // Clear any previous errors
     setIsRunning(true);
     console.log('Simulation started:', {
       isRunning: true,
@@ -60,6 +70,7 @@ function Visualizer() {
     if (!selectedScenario) return;
     
     console.log(`Fetching heatmap data for scenario: ${selectedScenario}`);
+    setHeatmapRendered(false);
     
     fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
       .then(res => {
@@ -69,23 +80,35 @@ function Visualizer() {
         return res.json();
       })
       .then(data => {
-        console.log('Raw heatmap data:', data); // Debug log
+        console.log(`Received ${data.length} raw heatmap points`);
         
-        // Validate and transform data
-        const validData = data
-          .filter(point => {
-            const lat = parseFloat(point.lat?.$numberDouble || point.lat);
-            const lon = parseFloat(point.lon?.$numberDouble || point.lon);
-            return !isNaN(lat) && !isNaN(lon);
-          })
-          .map(point => ({
-            lat: parseFloat(point.lat?.$numberDouble || point.lat),
-            lon: parseFloat(point.lon?.$numberDouble || point.lon),
-            prediction: parseFloat(point.prediction?.$numberDouble || point.prediction) || 0
-          }));
-  
-        console.log(`Processed ${validData.length} valid heatmap points:`, validData);
-        setHeatmapData(validData);
+        // Data validation and normalization
+        const processedData = data.map(point => {
+          // Handle nested number values from MongoDB (numberDouble format)
+          const lat = parseFloat(point.lat?.$numberDouble || point.lat);
+          const lon = parseFloat(point.lon?.$numberDouble || point.lon);
+          let prediction = 0;
+          
+          // Handle different prediction formats
+          if (point.prediction?.$numberInt) {
+            prediction = parseInt(point.prediction.$numberInt, 10);
+          } else if (point.prediction?.$numberDouble) {
+            prediction = parseFloat(point.prediction.$numberDouble);
+          } else {
+            prediction = parseInt(point.prediction || 0, 10);
+          }
+          
+          return {
+            lat,
+            lon,
+            prediction,
+            metadata: point.metadata || {}
+          };
+        }).filter(point => !isNaN(point.lat) && !isNaN(point.lon));
+        
+        console.log(`Processed ${processedData.length} valid heatmap points`);
+        setHeatmapData(processedData);
+        setStats(prev => ({...prev, heatmapPoints: processedData.length}));
         setLastFetchTime(new Date().toISOString());
       })
       .catch(error => {
@@ -94,68 +117,10 @@ function Visualizer() {
       });
   }, [selectedScenario]);
 
-  // Effect for heatmap data polling
-  useEffect(() => {
-    let intervalId;
-    
-    if (isRunning && selectedScenario) {
-      // Initial fetch
-      fetchHeatmapData();
-      
-      // Set up polling interval (5 seconds)
-      intervalId = setInterval(fetchHeatmapData, 5000);
-    } else if (!isRunning) {
-      // Clear heatmap data when simulation is stopped
-      setHeatmapData([]);
-    }
-    
-    // Cleanup function
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        console.log('Cleared heatmap data polling interval');
-      }
-    };
-  }, [isRunning, selectedScenario, fetchHeatmapData]);
-
-
-
-  // Fetch available scenarios on component mount
-  useEffect(() => {
-    fetch('http://localhost:5000/api/scenarios')
-      .then(res => res.json())
-      .then(data => {
-        setScenarios(data);
-        // Automatically select first scenario if available
-        if (data.length > 0) {
-          setSelectedScenario(data[0]);
-        }
-      })
-      .catch(error => {
-        console.error('Error fetching scenarios:', error);
-        setError('Failed to load scenarios. Please check the server connection.');
-      });
-  }, []);
-
-  // const handleStartSimulation = () => {
-  //   if (!selectedScenario) {
-  //     alert('Please select a scenario before starting');
-  //     return;
-  //   }
-    
-  //   setError(null); // Clear any previous errors
-  //   setIsRunning(true);
-  // };
-
-  // const handleStopSimulation = () => {
-  //   setIsRunning(false);
-  // };
-
-  // Create necessary collections structure in Firebase
+  // Initialize Firebase structure when component mounts
   const ensureFirebaseStructure = useCallback(async () => {
     try {
       // This is a workaround for the permission error
-      // Get all user emails from the userLocation collection
       const snapshot = await getDoc(doc(collection(db, 'userLocation'), 'structure_test'));
       
       // If it doesn't exist, create it to initialize the structure
@@ -181,33 +146,6 @@ function Visualizer() {
     }
   }, []);
 
-  // Fetch heatmap data
-  // const fetchHeatmapData = useCallback(() => {
-  //   if (!selectedScenario) return;
-    
-  //   fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
-  //     .then(res => {
-  //       if (!res.ok) {
-  //         throw new Error(`HTTP error! Status: ${res.status}`);
-  //       }
-  //       return res.json();
-  //     })
-  //     .then(data => {
-  //       setLastFetchTime(new Date().toISOString());
-        
-  //       if (data && Array.isArray(data) && data.length > 0) {
-  //         setHeatmapData(data);
-  //       } else {
-  //         console.warn('Received empty or invalid heatmap data');
-  //       }
-  //     })
-  //     .catch(error => {
-  //       console.error('Error fetching scenario data:', error);
-  //       setError(`Failed to load scenario data: ${error.message}`);
-  //     });
-  // }, [selectedScenario]);
-
-  // Initialize Firebase structure when component mounts
   useEffect(() => {
     ensureFirebaseStructure();
   }, [ensureFirebaseStructure]);
@@ -229,6 +167,7 @@ function Visualizer() {
     return () => {
       if (intervalId) {
         clearInterval(intervalId);
+        console.log('Cleared heatmap data polling interval');
       }
     };
   }, [isRunning, selectedScenario, fetchHeatmapData]);
@@ -280,11 +219,12 @@ function Visualizer() {
               const unsafeUsers = validLocations.filter(user => user.safe === false).length;
               
               setUserLocations(validLocations);
-              setStats({
+              setStats(prev => ({
+                ...prev,
                 totalUsers: validLocations.length,
                 safeUsers,
                 unsafeUsers
-              });
+              }));
             } catch (innerError) {
               console.error('Error processing user locations:', innerError);
             }
@@ -389,7 +329,8 @@ function Visualizer() {
           <strong>At Risk:</strong> <span style={{color: 'red'}}>{stats.unsafeUsers}</span>
         </div>
         <div>
-          <strong>Heatmap Points:</strong> {heatmapData.length}
+          <strong>Heatmap Points:</strong> {stats.heatmapPoints} 
+          {heatmapRendered && <span style={{color: 'green'}}> ✓</span>}
         </div>
         {lastFetchTime && (
           <div>
@@ -399,33 +340,22 @@ function Visualizer() {
       </div>
       
       <div style={{ border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
-      <MapComponent 
-        userLocations={userLocations} 
-        heatmapData={heatmapData}
-        onHeatmapRender={(points) => console.log('Heatmap rendered with points:', points)}
-      />
+        <MapComponent 
+          userLocations={userLocations} 
+          heatmapData={heatmapData}
+          onHeatmapRender={(pointCount) => {
+            console.log(`Heatmap rendered with ${pointCount} points`);
+            setHeatmapRendered(true);
+          }}
+        />
       </div>
       
-      <div style={{ marginTop: '15px', fontSize: '0.9em', color: '#666' }}>
+      <div style={{ marginTop: '15px', fontSize: '0.9em', color: '#fafafa' }}>
         <p>
           <strong>How it works:</strong> User locations are compared against wildfire prediction 
           data. Green markers indicate safe users, while red markers show users in potential 
           danger areas. Safety status is updated every 5 seconds and stored in Firebase.
         </p>
-        
-        <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
-          <strong>Firebase Structure:</strong><br/>
-          <code>
-            userLocation<br/>
-            &nbsp;&nbsp;└── [user email]<br/>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── latitude: number<br/>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── longitude: number<br/>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── timestamp: date<br/>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── situation (collection)<br/>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── SafeOrNot (document)<br/>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── safe: boolean
-          </code>
-        </div>
       </div>
     </div>
   );
