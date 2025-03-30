@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../FirebaseConfig';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import MapComponent from '../components/MapComponent';
 
 function Visualizer() {
@@ -10,14 +10,22 @@ function Visualizer() {
   const [heatmapData, setHeatmapData] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(null);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    safeUsers: 0,
+    unsafeUsers: 0
+  });
 
   // Fetch available scenarios on component mount
   useEffect(() => {
     fetch('http://localhost:5000/api/scenarios')
       .then(res => res.json())
       .then(data => {
-        console.log('Fetched scenarios:', data);
         setScenarios(data);
+        // Automatically select first scenario if available
+        if (data.length > 0) {
+          setSelectedScenario(data[0]);
+        }
       })
       .catch(error => console.error('Error fetching scenarios:', error));
   }, []);
@@ -29,31 +37,16 @@ function Visualizer() {
     }
     
     setIsRunning(true);
-    console.log('Simulation started:', {
-      isRunning: true,
-      selectedScenario,
-      userLocationsCount: userLocations.length,
-      heatmapDataCount: heatmapData.length,
-      action: 'Fetching user locations and heatmap data',
-    });
   };
 
   const handleStopSimulation = () => {
     setIsRunning(false);
-    console.log('Simulation stopped:', {
-      isRunning: false,
-      selectedScenario,
-      userLocationsCount: userLocations.length,
-      heatmapDataCount: heatmapData.length,
-      action: 'Stopping listeners and clearing heatmap',
-    });
+    setHeatmapData([]);
   };
 
-  // Memoized function to fetch heatmap data
+  // Fetch heatmap data
   const fetchHeatmapData = useCallback(() => {
     if (!selectedScenario) return;
-    
-    console.log(`Fetching heatmap data for scenario: ${selectedScenario}`);
     
     fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
       .then(res => {
@@ -63,14 +56,10 @@ function Visualizer() {
         return res.json();
       })
       .then(data => {
-        console.log(`Visualizer fetched ${data.length} heatmap points`);
         setLastFetchTime(new Date().toISOString());
         
-        // Only update state if data is valid and different
         if (data && Array.isArray(data) && data.length > 0) {
           setHeatmapData(data);
-        } else {
-          console.warn('Received empty or invalid heatmap data');
         }
       })
       .catch(error => {
@@ -88,46 +77,68 @@ function Visualizer() {
       
       // Set up polling interval (5 seconds)
       intervalId = setInterval(fetchHeatmapData, 5000);
-    } else if (!isRunning) {
-      // Clear heatmap data when simulation is stopped
-      setHeatmapData([]);
     }
     
-    // Cleanup function
     return () => {
       if (intervalId) {
         clearInterval(intervalId);
-        console.log('Cleared heatmap data polling interval');
       }
     };
   }, [isRunning, selectedScenario, fetchHeatmapData]);
 
-  // Firebase listener for user locations
+  // Firebase listener for user locations with email information
   useEffect(() => {
     let unsubscribe;
     
     if (isRunning) {
-      console.log('Setting up Firebase listener for user locations');
+      const userLocationsCollection = collection(db, 'userLocation');
       
-      unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
-        const locations = snapshot.docs.map(doc => {
-          const data = doc.data();
+      unsubscribe = onSnapshot(userLocationsCollection, async (snapshot) => {
+        const locationsPromises = snapshot.docs.map(async (userDoc) => {
+          const email = userDoc.id;
+          const data = userDoc.data();
+          
+          // Get safety status if available
+          let safeStatus = null;
+          try {
+            const situationRef = collection(userDoc.ref, 'situation');
+            const safetyDoc = await getDoc(doc(situationRef, 'SafeOrNot'));
+            if (safetyDoc.exists()) {
+              safeStatus = safetyDoc.data().safe;
+            }
+          } catch (error) {
+            console.error(`Error fetching safety status for ${email}:`, error);
+          }
+          
           return {
-            uid: doc.id,
-            lat: data.location?.lat || null,
-            lon: data.location?.lon || null,
+            uid: userDoc.id,
+            email: email,
+            lat: data.latitude || null,
+            lon: data.longitude || null,
+            timestamp: data.timestamp?.toDate() || new Date(),
+            safe: safeStatus
           };
-        }).filter(user => user.lat !== null && user.lon !== null);
+        });
         
-        console.log(`Received ${locations.length} user locations from Firebase`);
-        setUserLocations(locations);
+        const locations = await Promise.all(locationsPromises);
+        const validLocations = locations.filter(user => user.lat !== null && user.lon !== null);
+        
+        // Calculate stats
+        const safeUsers = validLocations.filter(user => user.safe === true).length;
+        const unsafeUsers = validLocations.filter(user => user.safe === false).length;
+        
+        setUserLocations(validLocations);
+        setStats({
+          totalUsers: validLocations.length,
+          safeUsers,
+          unsafeUsers
+        });
       });
     }
     
     return () => {
       if (unsubscribe) {
         unsubscribe();
-        console.log('Unsubscribed from Firebase listener');
       }
     };
   }, [isRunning]);
@@ -136,28 +147,27 @@ function Visualizer() {
     <div style={{ padding: '20px' }}>
       <h1>Wildfire Prediction Visualizer</h1>
       
-      <div style={{ marginBottom: '20px' }}>
-        <label htmlFor="scenarioSelect">Select Scenario: </label>
-        <select
-          id="scenarioSelect"
-          value={selectedScenario}
-          onChange={e => setSelectedScenario(e.target.value)}
-          style={{ padding: '5px', marginLeft: '10px' }}
-        >
-          <option value="">-- Choose a Scenario --</option>
-          {scenarios.map(scenario => (
-            <option key={scenario} value={scenario}>{scenario}</option>
-          ))}
-        </select>
-      </div>
-      
-      <div style={{ marginBottom: '20px' }}>
+      <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+        <div>
+          <label htmlFor="scenarioSelect">Select Scenario: </label>
+          <select
+            id="scenarioSelect"
+            value={selectedScenario}
+            onChange={e => setSelectedScenario(e.target.value)}
+            style={{ padding: '5px', marginLeft: '10px' }}
+          >
+            <option value="">-- Choose a Scenario --</option>
+            {scenarios.map(scenario => (
+              <option key={scenario} value={scenario}>{scenario}</option>
+            ))}
+          </select>
+        </div>
+        
         <button 
           onClick={handleStartSimulation} 
           disabled={isRunning || !selectedScenario} 
           style={{ 
             padding: '10px 20px', 
-            marginRight: '10px',
             backgroundColor: isRunning ? '#cccccc' : '#4CAF50',
             color: 'white',
             border: 'none',
@@ -184,9 +194,32 @@ function Visualizer() {
         </button>
       </div>
       
-      {lastFetchTime && (
-        <div style={{ marginBottom: '10px', fontSize: '0.9em', color: '#666' }}>
-          Last data update: {new Date(lastFetchTime).toLocaleTimeString()}
+      {isRunning && (
+        <div style={{ 
+          marginBottom: '20px', 
+          padding: '15px', 
+          backgroundColor: '#f5f5f5', 
+          borderRadius: '4px',
+          display: 'flex',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <strong>Active Users:</strong> {stats.totalUsers}
+          </div>
+          <div>
+            <strong>Safe Users:</strong> <span style={{color: 'green'}}>{stats.safeUsers}</span>
+          </div>
+          <div>
+            <strong>At Risk:</strong> <span style={{color: 'red'}}>{stats.unsafeUsers}</span>
+          </div>
+          <div>
+            <strong>Heatmap Points:</strong> {heatmapData.length}
+          </div>
+          {lastFetchTime && (
+            <div>
+              <strong>Last Update:</strong> {new Date(lastFetchTime).toLocaleTimeString()}
+            </div>
+          )}
         </div>
       )}
       
@@ -197,17 +230,15 @@ function Visualizer() {
         />
       </div>
       
-      <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
-        <div>
-          <strong>Active Users:</strong> {userLocations.length}
+      {isRunning && (
+        <div style={{ marginTop: '15px', fontSize: '0.9em', color: '#666' }}>
+          <p>
+            <strong>How it works:</strong> User locations are compared against wildfire prediction 
+            data. Green markers indicate safe users, while red markers show users in potential 
+            danger areas. Safety status is updated every 5 seconds and stored in Firebase.
+          </p>
         </div>
-        <div>
-          <strong>Heatmap Points:</strong> {heatmapData.length}
-        </div>
-        <div>
-          <strong>Status:</strong> {isRunning ? 'Running' : 'Stopped'}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
