@@ -17,7 +17,7 @@ class DatabaseConnection {
         dbName: 'prediction',
       });
 
-      console.log('predictionConnection initialized:', this.predictionConnection);
+      // console.log('predictionConnection initialized:', this.predictionConnection);
       
       this.predictionConnection.on('connected', () => 
         console.log('Connected to prediction database')

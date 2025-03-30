@@ -4,3 +4,4 @@ client/node_modules
 client/.env
 backend/.env
 backend/serviceAccountKey.json
+client/src/FirebaseConfig.ts
