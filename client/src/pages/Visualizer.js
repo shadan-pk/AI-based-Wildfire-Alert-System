@@ -1,34 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { FIREBASE_DB } from '../FirebaseConfig'; // Your client-side Firebase config
+import { db } from '../FirebaseConfig';
 import { collection, onSnapshot } from 'firebase/firestore';
 import MapComponent from '../components/MapComponent';
 
 function Visualizer() {
-  const [userLocations, setUserLocations] = useState([]); // Real-time user locations from Firestore
-  const [scenarios, setScenarios] = useState([]);         // List of scenarios from MongoDB
-  const [selectedScenario, setSelectedScenario] = useState(''); // Currently selected scenario
-  const [heatmapData, setHeatmapData] = useState([]);     // Prediction data for heatmap
-  const [isRunning, setIsRunning] = useState(false);      // Simulation running state
+  const [userLocations, setUserLocations] = useState([]);
+  const [scenarios, setScenarios] = useState([]);
+  const [selectedScenario, setSelectedScenario] = useState('');
+  const [heatmapData, setHeatmapData] = useState([]);
+  const [isRunning, setIsRunning] = useState(false);
 
   // Fetch list of scenarios from MongoDB server on mount
   useEffect(() => {
     fetch('http://localhost:5000/api/scenarios')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch scenarios');
+        return res.json();
+      })
       .then(data => {
-        console.log('Fetched scenarios:', data); // Add this
+        console.log('Fetched scenarios:', data);
         setScenarios(data);
       })
       .catch(error => console.error('Error fetching scenarios:', error));
   }, []);
+
   // Fetch heatmap data when a scenario is selected
   useEffect(() => {
     if (selectedScenario) {
-      fetch(`http://localhost:3000/api/scenario/${selectedScenario}`)
+      fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
         .then(res => {
           if (!res.ok) throw new Error('Failed to fetch scenario data');
           return res.json();
         })
-        .then(data => setHeatmapData(data))
+        .then(data => {
+          console.log('Fetched heatmap data:', data);
+          setHeatmapData(data);
+        })
         .catch(error => console.error('Error fetching scenario data:', error));
     }
   }, [selectedScenario]);
@@ -37,21 +44,29 @@ function Visualizer() {
   useEffect(() => {
     let unsubscribe;
     if (isRunning) {
-      unsubscribe = onSnapshot(collection(FIREBASE_DB, 'users'), (snapshot) => {
+      console.log('Starting Firestore listener...');
+      unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
         const locations = snapshot.docs.map(doc => {
           const data = doc.data();
+          console.log('Firestore doc:', doc.id, data); // Log raw data
           return {
             uid: doc.id,
-            lat: data.location?.lat || null, // Ensure lat/lon exist
+            lat: data.location?.lat || null,
             lon: data.location?.lon || null,
           };
-        }).filter(user => user.lat && user.lon); // Filter out invalid locations
+        }).filter(user => user.lat !== null && user.lon !== null);
+        console.log('Processed user locations:', locations);
         setUserLocations(locations);
       }, (error) => {
-        console.error('Firestore listener error:', error);
+        console.error('Firestore listener error:', error.message);
       });
     }
-    return () => unsubscribe && unsubscribe(); // Cleanup listener on unmount or stop
+    return () => {
+      if (unsubscribe) {
+        console.log('Stopping Firestore listener...');
+        unsubscribe();
+      }
+    };
   }, [isRunning]);
 
   return (

@@ -12,32 +12,36 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-function MapComponent({ userLocations, heatmapData }) {
+function MapComponent({ userLocations, heatmapData, onMapClick }) {
   const mapRef = useRef();
+
+  // Constants from simulation.js
+  const DEFAULT_CENTER = [76.262928, 11.038216]; // [lon, lat] as per your convention
+  const DEFAULT_ZOOM = 16.8;
 
   // Add heatmap layer when heatmapData changes
   useEffect(() => {
     if (mapRef.current && heatmapData && heatmapData.length > 0) {
-      // Create heatmap points: [lat, lon, intensity]
-      const heatPoints = heatmapData.map(point => [
-        point.lat,
-        point.lon,
-        point.prediction === 1 ? 0.8 : 0.2, // Higher intensity for "not safe" (1), lower for "safe" (0)
-      ]);
+      // Parse MongoDB prediction data
+      const heatPoints = heatmapData.map(point => {
+        const lat = parseFloat(point.lat?.$numberDouble || point.lat);
+        const lon = parseFloat(point.lon?.$numberDouble || point.lon);
+        const prediction = parseInt(point.prediction?.$numberInt || point.prediction, 10);
+        // prediction is either 0 or 1: 0 = safe (low intensity), 1 = not safe (high intensity)
+        return [lat, lon, prediction === 1 ? 0.8 : 0.2];
+      }).filter(point => !isNaN(point[0]) && !isNaN(point[1]));
 
-      // Add heatmap layer to the map
       const heatLayer = L.heatLayer(heatPoints, {
-        radius: 25,      // Size of heatmap spots
-        blur: 15,        // Blur for smoother transitions
-        maxZoom: 17,     // Max zoom level for heatmap visibility
-        gradient: {      // Custom gradient: green (safe) to red (not safe)
-          0.2: 'green',
-          0.5: 'yellow',
-          0.8: 'red',
+        radius: 25,
+        blur: 15,
+        maxZoom: 17,
+        gradient: {
+          0.2: 'green',  // Low intensity (safe, prediction = 0)
+          0.5: 'yellow', // Mid-range (not used here, but included for gradient smoothness)
+          0.8: 'red',    // High intensity (not safe, prediction = 1)
         },
       }).addTo(mapRef.current);
 
-      // Cleanup: Remove heatmap layer when component unmounts or data changes
       return () => {
         if (mapRef.current) {
           mapRef.current.removeLayer(heatLayer);
@@ -46,22 +50,38 @@ function MapComponent({ userLocations, heatmapData }) {
     }
   }, [heatmapData]);
 
+  // Handle map click events
+  useEffect(() => {
+    if (mapRef.current && onMapClick) {
+      const handleClick = (e) => {
+        const { lat, lng } = e.latlng;
+        // Convert Leaflet's [lat, lng] to your [lon, lat] convention
+        onMapClick({ lon: lng, lat: lat });
+      };
+      mapRef.current.on('click', handleClick);
+
+      return () => {
+        if (mapRef.current) {
+          mapRef.current.off('click', handleClick);
+        }
+      };
+    }
+  }, [onMapClick]);
+
   return (
     <MapContainer
-      center={[11.0389, 76.2631]} // Default center (your region, adjust as needed)
-      zoom={10}                   // Initial zoom level
-      style={{ height: '500px', width: '100%' }} // Map dimensions
-      whenCreated={map => (mapRef.current = map)} // Store map instance
+      center={[DEFAULT_CENTER[1], DEFAULT_CENTER[0]]} // Convert [lon, lat] to [lat, lon] for Leaflet
+      zoom={DEFAULT_ZOOM}
+      style={{ height: '500px', width: '100%' }}
+      whenCreated={map => (mapRef.current = map)}
     >
-      {/* Base tile layer from OpenStreetMap */}
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
 
-      {/* User location markers */}
       {userLocations && userLocations.map(user => (
-        user.lat && user.lon && ( // Ensure lat/lon exist before rendering
+        user.lat && user.lon && (
           <Marker
             key={user.uid}
             position={[user.lat, user.lon]}
