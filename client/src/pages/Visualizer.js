@@ -18,10 +18,99 @@ function Visualizer() {
   });
 
 
+  useEffect(() => {
+    fetch('http://localhost:5000/api/scenarios')
+      .then(res => res.json())
+      .then(data => {
+        console.log('Fetched scenarios:', data);
+        // console.log('Fetched scenarios:', data);
+        setScenarios(data);
+      })
+      .catch(error => console.error('Error fetching scenarios:', error));
+  }, []);
+
+  const handleStartSimulation = () => {
+    if (!selectedScenario) {
+      alert('Please select a scenario before starting');
+      return;
+    }
+    
+    setIsRunning(true);
+    console.log('Simulation started:', {
+      isRunning: true,
+      selectedScenario,
+      userLocationsCount: userLocations.length,
+      heatmapDataCount: heatmapData.length,
+      action: 'Fetching user locations and heatmap data',
+    });
+  };
+
+  const handleStopSimulation = () => {
+    setIsRunning(false);
+    console.log('Simulation stopped:', {
+      isRunning: false,
+      selectedScenario,
+      userLocationsCount: userLocations.length,
+      heatmapDataCount: heatmapData.length,
+      action: 'Stopping listeners and clearing heatmap',
+    });
+  };
+
+  // Memoized function to fetch heatmap data
+  const fetchHeatmapData = useCallback(() => {
+    if (!selectedScenario) return;
+    
+    console.log(`Fetching heatmap data for scenario: ${selectedScenario}`);
+    
+    fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! Status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => {
+        console.log(`Visualizer fetched ${data.length} heatmap points`);
+        setLastFetchTime(new Date().toISOString());
+        
+        // Only update state if data is valid and different
+        if (data && Array.isArray(data) && data.length > 0) {
+          setHeatmapData(data);
+        } else {
+          console.warn('Received empty or invalid heatmap data');
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching scenario data:', error);
+      });
+  }, [selectedScenario]);
+
+  // Effect for heatmap data polling
+  useEffect(() => {
+    let intervalId;
+    
+    if (isRunning && selectedScenario) {
+      // Initial fetch
+      fetchHeatmapData();
+      
+      // Set up polling interval (5 seconds)
+      intervalId = setInterval(fetchHeatmapData, 5000);
+    } else if (!isRunning) {
+      // Clear heatmap data when simulation is stopped
+      setHeatmapData([]);
+    }
+    
+    // Cleanup function
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        console.log('Cleared heatmap data polling interval');
+      }
+    };
+  }, [isRunning, selectedScenario, fetchHeatmapData]);
 
 
 
-  
   // Fetch available scenarios on component mount
   useEffect(() => {
     fetch('http://localhost:5000/api/scenarios')
@@ -39,19 +128,19 @@ function Visualizer() {
       });
   }, []);
 
-  const handleStartSimulation = () => {
-    if (!selectedScenario) {
-      alert('Please select a scenario before starting');
-      return;
-    }
+  // const handleStartSimulation = () => {
+  //   if (!selectedScenario) {
+  //     alert('Please select a scenario before starting');
+  //     return;
+  //   }
     
-    setError(null); // Clear any previous errors
-    setIsRunning(true);
-  };
+  //   setError(null); // Clear any previous errors
+  //   setIsRunning(true);
+  // };
 
-  const handleStopSimulation = () => {
-    setIsRunning(false);
-  };
+  // const handleStopSimulation = () => {
+  //   setIsRunning(false);
+  // };
 
   // Create necessary collections structure in Firebase
   const ensureFirebaseStructure = useCallback(async () => {
@@ -84,30 +173,30 @@ function Visualizer() {
   }, []);
 
   // Fetch heatmap data
-  const fetchHeatmapData = useCallback(() => {
-    if (!selectedScenario) return;
+  // const fetchHeatmapData = useCallback(() => {
+  //   if (!selectedScenario) return;
     
-    fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
-      .then(res => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! Status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then(data => {
-        setLastFetchTime(new Date().toISOString());
+  //   fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
+  //     .then(res => {
+  //       if (!res.ok) {
+  //         throw new Error(`HTTP error! Status: ${res.status}`);
+  //       }
+  //       return res.json();
+  //     })
+  //     .then(data => {
+  //       setLastFetchTime(new Date().toISOString());
         
-        if (data && Array.isArray(data) && data.length > 0) {
-          setHeatmapData(data);
-        } else {
-          console.warn('Received empty or invalid heatmap data');
-        }
-      })
-      .catch(error => {
-        console.error('Error fetching scenario data:', error);
-        setError(`Failed to load scenario data: ${error.message}`);
-      });
-  }, [selectedScenario]);
+  //       if (data && Array.isArray(data) && data.length > 0) {
+  //         setHeatmapData(data);
+  //       } else {
+  //         console.warn('Received empty or invalid heatmap data');
+  //       }
+  //     })
+  //     .catch(error => {
+  //       console.error('Error fetching scenario data:', error);
+  //       setError(`Failed to load scenario data: ${error.message}`);
+  //     });
+  // }, [selectedScenario]);
 
   // Initialize Firebase structure when component mounts
   useEffect(() => {
