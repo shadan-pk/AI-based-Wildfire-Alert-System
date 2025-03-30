@@ -14,81 +14,93 @@ L.Icon.Default.mergeOptions({
 
 function MapComponent({ userLocations, heatmapData, onMapClick }) {
   const mapRef = useRef();
-
-  // Constants from simulation.js
-  const DEFAULT_CENTER = [76.262928, 11.038216]; // [lon, lat] as per your convention
+  const DEFAULT_CENTER = [76.262928, 11.038216]; // [lon, lat]
   const DEFAULT_ZOOM = 16.8;
 
-  // Add heatmap layer when heatmapData changes
   useEffect(() => {
-    if (mapRef.current && heatmapData && heatmapData.length > 0) {
-      // Parse MongoDB prediction data
-      const heatPoints = heatmapData.map(point => {
-        const lat = parseFloat(point.lat?.$numberDouble || point.lat);
-        const lon = parseFloat(point.lon?.$numberDouble || point.lon);
-        const prediction = parseInt(point.prediction?.$numberInt || point.prediction, 10);
-        // prediction is either 0 or 1: 0 = safe (low intensity), 1 = not safe (high intensity)
-        return [lat, lon, prediction === 1 ? 0.8 : 0.2];
-      }).filter(point => !isNaN(point[0]) && !isNaN(point[1]));
+    console.log('MapComponent received userLocations:', userLocations);
+    console.log('MapComponent received heatmapData:', heatmapData);
+  }, [userLocations, heatmapData]);
 
+  // Add heatmap layer when map is ready and heatmapData changes
+  useEffect(() => {
+    if (!mapRef.current) {
+      console.log('Map not yet initialized, skipping heatmap generation');
+      return;
+    }
+    if (!heatmapData || heatmapData.length === 0) {
+      console.log('No heatmap data available');
+      return;
+    }
+
+    console.log('Generating heatmap with data:', heatmapData);
+
+  const heatPoints = heatmapData
+    .map(point => {
+      // Simpler parsing logic
+      const lat = typeof point.lat === 'object' ? parseFloat(point.lat.$numberDouble) : parseFloat(point.lat);
+      const lon = typeof point.lon === 'object' ? parseFloat(point.lon.$numberDouble) : parseFloat(point.lon);
+      const prediction = typeof point.prediction === 'object' ? 
+        parseInt(point.prediction.$numberInt) : parseInt(point.prediction);
+      
+      // Debug logging
+      console.log(`Processing point: ${lat}, ${lon}, ${prediction}`);
+      
+      if (isNaN(lat) || isNaN(lon)) {
+        console.warn('Invalid coordinates:', point);
+        return null;
+      }
+      
+      return [lat, lon, prediction === 1 ? 0.8 : 0.2];
+    })
+    .filter(Boolean); // Filter out null values
+
+    if (heatPoints.length === 0) {
+      console.warn('No valid heatmap points generated');
+    } else {
       const heatLayer = L.heatLayer(heatPoints, {
         radius: 25,
         blur: 15,
         maxZoom: 17,
-        gradient: {
-          0.2: 'green',  // Low intensity (safe, prediction = 0)
-          0.5: 'yellow', // Mid-range (not used here, but included for gradient smoothness)
-          0.8: 'red',    // High intensity (not safe, prediction = 1)
-        },
+        gradient: { 0.2: 'green', 0.5: 'yellow', 0.8: 'red' },
       }).addTo(mapRef.current);
+      console.log('Heatmap layer added with', heatPoints.length, 'points');
 
       return () => {
         if (mapRef.current) {
           mapRef.current.removeLayer(heatLayer);
+          console.log('Heatmap layer removed');
         }
       };
     }
-  }, [heatmapData]);
+  }, [heatmapData]); // Depend on mapRef.current explicitly
 
-  // Handle map click events
   useEffect(() => {
     if (mapRef.current && onMapClick) {
       const handleClick = (e) => {
         const { lat, lng } = e.latlng;
-        // Convert Leaflet's [lat, lng] to your [lon, lat] convention
         onMapClick({ lon: lng, lat: lat });
       };
       mapRef.current.on('click', handleClick);
-
-      return () => {
-        if (mapRef.current) {
-          mapRef.current.off('click', handleClick);
-        }
-      };
+      return () => mapRef.current.off('click', handleClick);
     }
   }, [onMapClick]);
 
   return (
-    <MapContainer
-      center={[DEFAULT_CENTER[1], DEFAULT_CENTER[0]]} // Convert [lon, lat] to [lat, lon] for Leaflet
-      zoom={DEFAULT_ZOOM}
-      style={{ height: '500px', width: '100%' }}
-      whenCreated={map => (mapRef.current = map)}
-    >
+      <MapContainer
+        center={[DEFAULT_CENTER[1], DEFAULT_CENTER[0]]}
+        zoom={DEFAULT_ZOOM}
+        style={{ height: '500px', width: '100%' }}
+        ref={mapRef}
+      >
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
-
       {userLocations && userLocations.map(user => (
         user.lat && user.lon && (
-          <Marker
-            key={user.uid}
-            position={[user.lat, user.lon]}
-          >
-            <Popup>
-              User: {user.uid}
-            </Popup>
+          <Marker key={user.uid} position={[user.lat, user.lon]}>
+            <Popup>User: {user.uid}</Popup>
           </Marker>
         )
       ))}

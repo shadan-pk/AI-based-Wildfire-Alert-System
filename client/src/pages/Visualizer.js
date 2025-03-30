@@ -10,13 +10,9 @@ function Visualizer() {
   const [heatmapData, setHeatmapData] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
 
-  // Fetch list of scenarios from MongoDB server on mount
   useEffect(() => {
     fetch('http://localhost:5000/api/scenarios')
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch scenarios');
-        return res.json();
-      })
+      .then(res => res.json())
       .then(data => {
         console.log('Fetched scenarios:', data);
         setScenarios(data);
@@ -24,56 +20,69 @@ function Visualizer() {
       .catch(error => console.error('Error fetching scenarios:', error));
   }, []);
 
-  // Fetch heatmap data when a scenario is selected
-  useEffect(() => {
-    if (selectedScenario) {
-      fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
-        .then(res => {
-          if (!res.ok) throw new Error('Failed to fetch scenario data');
-          return res.json();
-        })
-        .then(data => {
-          console.log('Fetched heatmap data:', data);
-          setHeatmapData(data);
-        })
-        .catch(error => console.error('Error fetching scenario data:', error));
-    }
-  }, [selectedScenario]);
+  const handleStartSimulation = () => {
+    setIsRunning(true);
+    console.log('Simulation started:', {
+      isRunning: true,
+      selectedScenario,
+      userLocationsCount: userLocations.length,
+      heatmapDataCount: heatmapData.length,
+      action: 'Fetching user locations and heatmap data (if scenario selected)',
+    });
+  };
 
-  // Real-time listener for user locations from Firestore
+  const handleStopSimulation = () => {
+    setIsRunning(false);
+    console.log('Simulation stopped:', {
+      isRunning: false,
+      selectedScenario,
+      userLocationsCount: userLocations.length,
+      heatmapDataCount: heatmapData.length,
+      action: 'Stopping listeners and clearing heatmap',
+    });
+  };
+
+  useEffect(() => {
+    let intervalId;
+    if (isRunning && selectedScenario) {
+      const fetchHeatmapData = () => {
+        fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
+          .then(res => res.json())
+          .then(data => {
+            console.log('Visualizer fetched heatmap data:', data);
+            setHeatmapData(data);
+          })
+          .catch(error => console.error('Error fetching scenario data:', error));
+      };
+      fetchHeatmapData();
+      intervalId = setInterval(fetchHeatmapData, 5000);
+    } else if (!isRunning) {
+      setHeatmapData([]);
+    }
+    return () => intervalId && clearInterval(intervalId);
+  }, [isRunning, selectedScenario]);
+
   useEffect(() => {
     let unsubscribe;
     if (isRunning) {
-      console.log('Starting Firestore listener...');
       unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
         const locations = snapshot.docs.map(doc => {
           const data = doc.data();
-          console.log('Firestore doc:', doc.id, data); // Log raw data
           return {
             uid: doc.id,
             lat: data.location?.lat || null,
             lon: data.location?.lon || null,
           };
         }).filter(user => user.lat !== null && user.lon !== null);
-        console.log('Processed user locations:', locations);
         setUserLocations(locations);
-      }, (error) => {
-        console.error('Firestore listener error:', error.message);
       });
     }
-    return () => {
-      if (unsubscribe) {
-        console.log('Stopping Firestore listener...');
-        unsubscribe();
-      }
-    };
+    return () => unsubscribe && unsubscribe();
   }, [isRunning]);
 
   return (
     <div style={{ padding: '20px' }}>
       <h1>Wildfire Prediction Visualizer</h1>
-
-      {/* Scenario selection dropdown */}
       <div style={{ marginBottom: '20px' }}>
         <label htmlFor="scenarioSelect">Select Scenario: </label>
         <select
@@ -84,32 +93,18 @@ function Visualizer() {
         >
           <option value="">-- Choose a Scenario --</option>
           {scenarios.map(scenario => (
-            <option key={scenario} value={scenario}>
-              {scenario}
-            </option>
+            <option key={scenario} value={scenario}>{scenario}</option>
           ))}
         </select>
       </div>
-
-      {/* Start/Stop buttons */}
       <div style={{ marginBottom: '20px' }}>
-        <button
-          onClick={() => setIsRunning(true)}
-          disabled={isRunning}
-          style={{ padding: '10px 20px', marginRight: '10px' }}
-        >
+        <button onClick={handleStartSimulation} disabled={isRunning} style={{ padding: '10px 20px', marginRight: '10px' }}>
           Start
         </button>
-        <button
-          onClick={() => setIsRunning(false)}
-          disabled={!isRunning}
-          style={{ padding: '10px 20px' }}
-        >
+        <button onClick={handleStopSimulation} disabled={!isRunning} style={{ padding: '10px 20px' }}>
           Stop
         </button>
       </div>
-
-      {/* Map component */}
       <MapComponent userLocations={userLocations} heatmapData={heatmapData} />
     </div>
   );
