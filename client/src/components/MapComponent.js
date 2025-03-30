@@ -39,25 +39,19 @@ function MapUpdater({ userLocations, heatmapData }) {
   
   useEffect(() => {
     // If we have users, focus on them
-    if (userLocations && userLocations.length > 0) {
-      const bounds = L.latLngBounds(userLocations.map(user => [user.lat, user.lon]));
-      map.fitBounds(bounds, { padding: [50, 50] });
-    }
-    // If no users but we have heatmap data, focus on that
-    else if (heatmapData && heatmapData.length > 0) {
+    if (heatmapData && heatmapData.length > 0) {
       const validPoints = heatmapData.filter(point => {
         const lat = parseFloat(point.lat?.$numberDouble || point.lat);
         const lon = parseFloat(point.lon?.$numberDouble || point.lon);
         return !isNaN(lat) && !isNaN(lon);
       });
       
-      if (validPoints.length > 0) {
-        const heatBounds = L.latLngBounds(validPoints.map(point => {
-          const lat = parseFloat(point.lat?.$numberDouble || point.lat);
-          const lon = parseFloat(point.lon?.$numberDouble || point.lon);
-          return [lat, lon];
-        }));
-        map.fitBounds(heatBounds, { padding: [50, 50] });
+      if (validPoints.length > 0 && !map.initialViewSet) {
+        const firstPoint = validPoints[0];
+        const lat = parseFloat(firstPoint.lat?.$numberDouble || firstPoint.lat);
+        const lon = parseFloat(firstPoint.lon?.$numberDouble || firstPoint.lon);
+        map.setView([lat, lon], 13);
+        map.initialViewSet = true;
       }
     }
   }, [userLocations, heatmapData, map]);
@@ -78,6 +72,14 @@ function HeatmapLayer({ map, heatmapData }) {
         map.removeLayer(layer);
       }
     });
+
+    console.log('Raw heatmap data:', heatmapData);
+    
+    if (!L.heatLayer) {
+      console.error('Leaflet.heat is not properly initialized');
+      return;
+    }
+    console.log('Leaflet.heat is available');
     
     const heatPoints = heatmapData
       .map(point => {
@@ -85,14 +87,14 @@ function HeatmapLayer({ map, heatmapData }) {
         const lon = parseFloat(point.lon?.$numberDouble || point.lon);
         const prediction = parseInt(point.prediction?.$numberInt || point.prediction, 10);
         
-        // More intense for predicted wildfire locations
-        const intensity = prediction === 1 ? 0.8 : 0.2;
-        
-        return [lat, lon, intensity];
+        // FIXED: Order should be [latitude, longitude, intensity] for Leaflet.heat
+        return [lat, lon, prediction === 1 ? 0.8 : 0.2];
       })
       .filter(point => !isNaN(point[0]) && !isNaN(point[1]));
 
     if (heatPoints.length > 0) {
+      console.log('Processed heat points:', heatPoints);
+      
       const heatLayer = L.heatLayer(heatPoints, {
         radius: 25, 
         blur: 15,
@@ -114,6 +116,7 @@ function HeatmapLayer({ map, heatmapData }) {
         }
       };
     }
+    
   }, [map, heatmapData]);
   
   return null;
@@ -219,16 +222,16 @@ function MapComponent({ userLocations, heatmapData }) {
   };
 
   return (
-    <MapContainer
-      center={DEFAULT_CENTER}
-      zoom={DEFAULT_ZOOM}
-      style={{ height: '700px', width: '100%' }}
-      whenCreated={mapInstance => {
-        mapRef.current = mapInstance;
-        setMapInstance(mapInstance);
-      }}
-      preferCanvas={true}
-    >
+      <MapContainer
+        center={DEFAULT_CENTER}
+        zoom={DEFAULT_ZOOM}
+        style={{ height: '700px', width: '100%' }}
+        ref={mapRef}
+        whenReady={() => {
+          setMapInstance(mapRef.current);
+        }}
+        preferCanvas={true}
+      >
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

@@ -23,7 +23,6 @@ function Visualizer() {
       .then(res => res.json())
       .then(data => {
         console.log('Fetched scenarios:', data);
-        // console.log('Fetched scenarios:', data);
         setScenarios(data);
       })
       .catch(error => console.error('Error fetching scenarios:', error));
@@ -70,18 +69,28 @@ function Visualizer() {
         return res.json();
       })
       .then(data => {
-        console.log(`Visualizer fetched ${data.length} heatmap points`);
-        setLastFetchTime(new Date().toISOString());
+        console.log('Raw heatmap data:', data); // Debug log
         
-        // Only update state if data is valid and different
-        if (data && Array.isArray(data) && data.length > 0) {
-          setHeatmapData(data);
-        } else {
-          console.warn('Received empty or invalid heatmap data');
-        }
+        // Validate and transform data
+        const validData = data
+          .filter(point => {
+            const lat = parseFloat(point.lat?.$numberDouble || point.lat);
+            const lon = parseFloat(point.lon?.$numberDouble || point.lon);
+            return !isNaN(lat) && !isNaN(lon);
+          })
+          .map(point => ({
+            lat: parseFloat(point.lat?.$numberDouble || point.lat),
+            lon: parseFloat(point.lon?.$numberDouble || point.lon),
+            prediction: parseFloat(point.prediction?.$numberDouble || point.prediction) || 0
+          }));
+  
+        console.log(`Processed ${validData.length} valid heatmap points:`, validData);
+        setHeatmapData(validData);
+        setLastFetchTime(new Date().toISOString());
       })
       .catch(error => {
         console.error('Error fetching scenario data:', error);
+        setError(`Failed to load scenario data: ${error.message}`);
       });
   }, [selectedScenario]);
 
@@ -390,10 +399,11 @@ function Visualizer() {
       </div>
       
       <div style={{ border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
-        <MapComponent 
-          userLocations={userLocations} 
-          heatmapData={heatmapData} 
-        />
+      <MapComponent 
+        userLocations={userLocations} 
+        heatmapData={heatmapData}
+        onHeatmapRender={(points) => console.log('Heatmap rendered with points:', points)}
+      />
       </div>
       
       <div style={{ marginTop: '15px', fontSize: '0.9em', color: '#666' }}>
