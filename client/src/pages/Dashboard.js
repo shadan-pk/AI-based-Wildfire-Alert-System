@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   collection, 
   doc, 
-  getDoc, 
+  onSnapshot, 
   query, 
   where, 
-  onSnapshot,
-  getDocs
+  collectionGroup,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from '../FirebaseConfig'; // Adjust this import to match your firebase config
 import { getAuth } from 'firebase/auth';
@@ -20,99 +20,209 @@ const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [loading, setLoading] = useState(true);
+  const [usersData, setUsersData] = useState({});
+  const [activeTab, setActiveTab] = useState('online'); // Added for tab management
+  const [debouncedLoading, setDebouncedLoading] = useState(false);
 
   const auth = getAuth();
   const currentUser = auth.currentUser;
 
-  // Listen for online users in real-time
+  // Console log to track component renders and state changes
+  console.log("Dashboard rendering", { 
+    selectedUser, 
+    loading, 
+    userReportsCount: userReports.length, 
+    onlineUsersCount: onlineUsers.length,
+    usersDataCount: Object.keys(usersData).length
+  });
+
+  // Real-time listener for all users in the users collection
   useEffect(() => {
-    setLoading(true);
-    
-    // Create a query to fetch all documents in userLocation collection
-    const userLocationsRef = collection(db, "userLocation");
-    
-    const unsubscribe = onSnapshot(userLocationsRef, async (snapshot) => {
-      const onlineUsersData = [];
-      
-      // For each user location document
-      for (const userDoc of snapshot.docs) {
-        const userEmail = userDoc.id;
-        
-        // Get the presence status document
-        const presenceDoc = await getDoc(doc(db, "userLocation", userEmail, "status", "presence"));
-        
-        // Only include users who are online
-        if (presenceDoc.exists() && presenceDoc.data().online === true) {
-          // Get the user's location data
-          const locationData = userDoc.data();
-          
-          // Find the user details from users collection
-          const usersSnapshot = await getDocs(
-            query(collection(db, "users"), where("email", "==", userEmail))
-          );
-          
-          let userData = {};
-          if (!usersSnapshot.empty) {
-            userData = usersSnapshot.docs[0].data();
-            userData.uid = usersSnapshot.docs[0].id;
-          }
-          
-          onlineUsersData.push({
-            email: userEmail,
-            name: userData.firstName ? `${userData.firstName} ${userData.lastName || ''}` : 'Anonymous',
-            location: {
-              latitude: locationData.latitude,
-              longitude: locationData.longitude
-            },
-            timestamp: locationData.timestamp,
-            uid: userData.uid,
-            phone: userData.phone,
-            address: userData.address
-          });
-        }
-      }
-      
-      setOnlineUsers(onlineUsersData);
-      setLoading(false);
+    console.log("Setting up users collection listener");
+    const usersRef = collection(db, "users");
+    const unsubscribe = onSnapshot(usersRef, (snapshot) => {
+      console.log("Users collection update received", { docsCount: snapshot.docs.length });
+      const usersMap = {};
+      snapshot.docs.forEach((userDoc) => {
+        const userData = userDoc.data();
+        usersMap[userData.email] = {
+          ...userData,
+          uid: userDoc.id,
+          name: userData.firstName ? `${userData.firstName} ${userData.lastName || ''}` : 'Anonymous'
+        };
+      });
+      setUsersData(usersMap);
+      console.log("Updated usersData with", Object.keys(usersMap).length, "users");
     });
     
     return () => unsubscribe();
   }, []);
 
-  // Fetch reports for a selected user
+  // Add this effect to debounce the loading state
   useEffect(() => {
-    if (!selectedUser) {
-      setUserReports([]);
+    if (loading) {
+      const timer = setTimeout(() => {
+        setDebouncedLoading(true);
+      }, 200); // Only show loading after 200ms
+      return () => clearTimeout(timer);
+    } else {
+      setDebouncedLoading(false);
+    }
+  }, [loading]);
+  
+
+  // Real-time listener for all users regardless of simulation tab
+  useEffect(() => {
+    console.log("Setting up userLocation listener", { usersDataCount: Object.keys(usersData).length });
+    setLoading(true);
+    
+    const userLocationsRef = collection(db, "userLocation");
+    const unsubscribeLocations = onSnapshot(userLocationsRef, (snapshot) => {
+      console.log("UserLocation collection update received", { docsCount: snapshot.docs.length });
+      const allUsersData = [];
+      const unsubscribePresenceArray = [];
+      
+      snapshot.docs.forEach((userDoc) => {
+        const userEmail = userDoc.id;
+        const locationData = userDoc.data();
+        console.log("Processing user location for", userEmail);
+        
+        // Set up a real-time listener for this specific user's presence
+        const presenceRef = doc(db, "userLocation", userEmail, "status", "presence");
+        const unsubscribeUserPresence = onSnapshot(presenceRef, (presenceDoc) => {
+          console.log("Presence update for", userEmail, { exists: presenceDoc.exists() });
+          // Check if user is online based on presence status
+          if (presenceDoc.exists()) {
+            const presenceData = presenceDoc.data();
+            // Get user data from our cached users data
+            const userData = usersData[userEmail] || {
+              name: 'Anonymous',
+              email: userEmail
+            };
+            
+            // Create or update user in our online users list
+            const userIndex = allUsersData.findIndex(u => u.email === userEmail);
+            const userInfo = {
+              email: userEmail,
+              name: userData.name,
+              location: {
+                latitude: locationData.latitude || 0,
+                longitude: locationData.longitude || 0
+              },
+              timestamp: locationData.timestamp,
+              uid: userData.uid,
+              phone: userData.phone,
+              address: userData.address,
+              isOnline: presenceData.online === true, // Track online status separately
+            };
+            
+            console.log("User info updated", { 
+              email: userEmail, 
+              name: userData.name, 
+              isOnline: presenceData.online === true,
+              existingIndex: userIndex 
+            });
+            
+            if (userIndex >= 0) {
+              allUsersData[userIndex] = userInfo;
+            } else {
+              allUsersData.push(userInfo);
+            }
+            
+            // Update state with all users (both online and offline)
+            // We'll filter based on the active tab when rendering
+            setOnlineUsers([...allUsersData]);
+            console.log("Updated onlineUsers array with", allUsersData.length, "users");
+            
+            // Update selected user if this was the selected user
+            if (selectedUser && selectedUser.email === userEmail) {
+              console.log("Updating selectedUser data for", userEmail);
+              setSelectedUser(userInfo);
+            }
+          }
+          
+          setLoading(false);
+        });
+        
+        // Keep track of unsubscribe functions
+        unsubscribePresenceArray.push(unsubscribeUserPresence);
+      });
+      
+      // Return a cleanup function that calls all the unsubscribe functions
+      return () => {
+        console.log("Cleaning up", unsubscribePresenceArray.length, "presence listeners");
+        unsubscribePresenceArray.forEach(unsub => unsub());
+      };
+    });
+    
+    // THIS IS A CRUCIAL FIX: Return the proper cleanup function
+    return () => {
+      console.log("Cleaning up main userLocation listener");
+      unsubscribeLocations();
+    };
+  }, [usersData, selectedUser]);
+
+  // Real-time listener for selected user's reports
+  useEffect(() => {
+    console.log("Setting up reports listener", { selectedUser: selectedUser?.email });
+    let unsubscribe = null;
+
+    const setupReportsListener = async () => {
+      if (!selectedUser?.email) {
+        setUserReports([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const reportsRef = collection(db, "userLocation", selectedUser.email, "reports");
+        
+        unsubscribe = onSnapshot(reportsRef, (snapshot) => {
+          const reportsData = snapshot.docs
+            .filter(doc => doc.id !== 'metadata')
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+              timestamp: doc.data().timestamp?.toDate() || new Date()
+            }))
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+          setUserReports(reportsData);
+          setLoading(false);
+        }, (error) => {
+          console.error("Error fetching reports:", error);
+          setLoading(false);
+        });
+      } catch (error) {
+        console.error("Error setting up reports listener:", error);
+        setLoading(false);
+      }
+    };
+
+    setupReportsListener();
+    
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [selectedUser?.email]); // Only depend on email, not the entire selectedUser object
+
+  // IMPORTANT: Adding a debug function to check the reports path
+  const checkReportsPath = (user) => {
+    if (!user || !user.email) {
+      console.error("Invalid user or missing email", user);
       return;
     }
     
-    const fetchReports = async () => {
-      try {
-        const reportsRef = collection(db, "userLocation", selectedUser.email, "reports");
-        const reportsSnapshot = await getDocs(reportsRef);
-        
-        const reportsData = [];
-        reportsSnapshot.forEach(doc => {
-          // Skip metadata document
-          if (doc.id !== 'metadata') {
-            reportsData.push({
-              id: doc.id,
-              ...doc.data()
-            });
-          }
-        });
-        
-        setUserReports(reportsData);
-      } catch (error) {
-        console.error("Error fetching reports:", error);
-      }
-    };
-    
-    fetchReports();
-  }, [selectedUser]);
+    console.log("Reports path would be:", `userLocation/${user.email}/reports`);
+    // You might also log the entire user object to see what's available
+    console.log("Full user object:", user);
+  };
 
   const handleSendAlert = async (userId) => {
     try {
+      console.log("Sending alert to user", userId);
       // Here you would implement your alert sending functionality
       // This could be through Firebase Cloud Messaging or another method
       
@@ -135,11 +245,30 @@ const Dashboard = () => {
       alert('Failed to send alert.');
     }
   };
+  
+  // Function to update report status
+  const updateReportStatus = async (reportId, newStatus) => {
+    try {
+      if (!selectedUser) return;
+      
+      console.log("Updating report status", { reportId, newStatus, userEmail: selectedUser.email });
+      const reportRef = doc(db, "userLocation", selectedUser.email, "reports", reportId);
+      await updateDoc(reportRef, {
+        status: newStatus
+      });
+      alert(`Report status updated to ${newStatus}`);
+    } catch (error) {
+      console.error('Error updating report status:', error);
+      alert('Failed to update report status.');
+    }
+  };
 
+  // Filter users based on active tab and search term
   const filteredUsers = onlineUsers
     .filter(user => 
-      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      (activeTab === 'online' ? user.isOnline : true) && // Show only online users when on 'online' tab
+      (user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()))
     )
     .sort((a, b) => {
       if (sortBy === 'name') {
@@ -147,6 +276,18 @@ const Dashboard = () => {
       }
       return (a.email || '').localeCompare(b.email || '');
     });
+
+  // Important: Modified the user selection function to prevent loading state issues
+  const handleSelectUser = (user) => {
+    console.log("User selected", user.email);
+    
+    // Add this to debug reports path
+    checkReportsPath(user);
+    
+    // Important: don't set loading here, which would cause flickering
+    // We'll manage loading state inside each effect
+    setSelectedUser(user);
+  };
 
   return (
     <div className="p-6 bg-gray-100 min-h-screen">
@@ -162,27 +303,45 @@ const Dashboard = () => {
             className="w-full p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <select 
-          value={sortBy} 
-          onChange={(e) => setSortBy(e.target.value)}
-          className="p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="name">Sort by Name</option>
-          <option value="email">Sort by Email</option>
-        </select>
+        <div className="flex gap-4">
+          <select 
+            value={sortBy} 
+            onChange={(e) => setSortBy(e.target.value)}
+            className="p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="name">Sort by Name</option>
+            <option value="email">Sort by Email</option>
+          </select>
+          <div className="flex border border-gray-300 rounded overflow-hidden">
+            <button 
+              className={`px-4 py-2 ${activeTab === 'online' ? 'bg-blue-500 text-white' : 'bg-white'}`}
+              onClick={() => setActiveTab('online')}
+            >
+              Online Users
+            </button>
+            <button 
+              className={`px-4 py-2 ${activeTab === 'all' ? 'bg-blue-500 text-white' : 'bg-white'}`}
+              onClick={() => setActiveTab('all')}
+            >
+              All Users
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row">
-        {/* Online Users List */}
+        {/* Users List */}
         <div className="w-full md:w-1/2 md:mr-4 mb-6 md:mb-0">
-          <h2 className="text-xl font-semibold mb-4 text-gray-700">Online Users</h2>
-          {loading ? (
+          <h2 className="text-xl font-semibold mb-4 text-gray-700">
+            {activeTab === 'online' ? 'Online Users' : 'All Users'} ({filteredUsers.length})
+          </h2>
+          {loading && onlineUsers.length === 0 ? (
             <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
               <p>Loading users...</p>
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
-              <p className="text-gray-500">No online users found.</p>
+              <p className="text-gray-500">No users found.</p>
             </div>
           ) : (
             <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -190,15 +349,15 @@ const Dashboard = () => {
                 <div 
                   key={user.email} 
                   className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors ${selectedUser?.email === user.email ? 'bg-blue-50' : ''}`}
-                  onClick={() => setSelectedUser(user)}
+                  onClick={() => handleSelectUser(user)}
                 >
                   <div className="flex justify-between items-center">
                     <div>
                       <h3 className="font-medium text-gray-800">{user.name || 'Anonymous'}</h3>
                       <p className="text-sm text-gray-600">{user.email}</p>
                       <p className="text-sm">
-                        <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-1"></span>
-                        Online
+                        <span className={`inline-block w-2 h-2 ${user.isOnline ? 'bg-green-500' : 'bg-gray-400'} rounded-full mr-1`}></span>
+                        {user.isOnline ? 'Online' : 'Offline'}
                       </p>
                     </div>
                     <button
@@ -243,19 +402,62 @@ const Dashboard = () => {
                     ` ${new Date(selectedUser.timestamp.toDate()).toLocaleString()}` : 
                     ' Not available'}
                 </p>
+                <p className="mb-2">
+                  <span className="font-medium">Status:</span> 
+                  <span className={`ml-1 px-2 py-1 rounded text-xs ${selectedUser.isOnline ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                    {selectedUser.isOnline ? 'Online' : 'Offline'}
+                  </span>
+                </p>
               </div>
 
-              <h3 className="text-lg font-semibold mb-3 text-gray-700">Recent Reports</h3>
-              {userReports.length === 0 ? (
-                <p className="text-gray-500">No reports found for this user.</p>
-              ) : (
-                <div className="space-y-3">
-                  {userReports.map(report => (
-                    <div key={report.id} className="p-3 bg-gray-50 rounded border border-gray-200">
-                      <p className="font-medium">{report.id}</p>
+              <h3 className="text-lg font-semibold mb-3 text-gray-700">
+                User Reports {!loading && `(${userReports.length})`}
+              </h3>
+              
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+              {debouncedLoading ? (
+  <div className="flex justify-center items-center h-32">
+    <p className="text-gray-500">Loading reports...</p>
+  </div>
+) : userReports.length === 0 ? (
+                  <div className="p-4 bg-gray-50 rounded">
+                    <p className="text-gray-500">No reports found for this user.</p>
+                  </div>
+                ) : (
+                  userReports.map(report => (
+                    <div 
+                      key={report.id}
+                      className="p-4 bg-gray-50 rounded-lg border border-gray-200 transition-all duration-200 ease-in-out"
+                    >
+                      <div className="flex justify-between items-start">
+                        <p className="font-medium">{report.id}</p>
+                        {report.status && (
+                          <div className="flex items-center">
+                            <span className="text-sm mr-2">Status: 
+                              <span className={`ml-1 px-2 py-1 rounded text-xs ${
+                                report.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                                report.status === 'approved' ? 'bg-green-100 text-green-800' : 
+                                report.status === 'rejected' ? 'bg-red-100 text-red-800' : 
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {report.status}
+                              </span>
+                            </span>
+                            <select 
+                              onChange={(e) => updateReportStatus(report.id, e.target.value)}
+                              className="text-sm border border-gray-300 rounded p-1"
+                              value={report.status || 'pending'}
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="approved">Approved</option>
+                              <option value="rejected">Rejected</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
                       <div className="text-sm text-gray-700 mt-1">
                         {Object.entries(report)
-                          .filter(([key]) => key !== 'id')
+                          .filter(([key]) => key !== 'id' && key !== 'status')
                           .map(([key, value]) => (
                             <div key={key} className="mb-1">
                               <span className="font-medium">{key}: </span>
@@ -264,9 +466,9 @@ const Dashboard = () => {
                           ))}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  ))
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
