@@ -202,9 +202,17 @@ function Visualizer() {
                     const isOnline = statusDoc.exists() && statusDoc.data().online === true;
                     
                     if (!isOnline) {
-                      setUserLocations(prevLocations => 
-                        prevLocations.filter(u => u.email !== email)
-                      );
+                      setUserLocations(prevLocations => {
+                        const updatedLocations = prevLocations.filter(u => u.email !== email);
+                        // Update stats when user goes offline
+                        setStats(prevStats => ({
+                          ...prevStats,
+                          totalUsers: updatedLocations.length,
+                          safeUsers: updatedLocations.filter(u => u.safe === true).length,
+                          unsafeUsers: updatedLocations.filter(u => u.safe === false).length
+                        }));
+                        return updatedLocations;
+                      });
                     } else {
                       // Re-fetch user data when they come back online
                       const userData = (await getDoc(userDocRef)).data();
@@ -223,7 +231,15 @@ function Visualizer() {
 
                       setUserLocations(prevLocations => {
                         const filtered = prevLocations.filter(u => u.email !== email);
-                        return [...filtered, updatedUser];
+                        const newLocations = [...filtered, updatedUser];
+                        // Update stats when user data changes
+                        setStats(prevStats => ({
+                          ...prevStats,
+                          totalUsers: newLocations.length,
+                          safeUsers: newLocations.filter(u => u.safe === true).length,
+                          unsafeUsers: newLocations.filter(u => u.safe === false).length
+                        }));
+                        return newLocations;
                       });
                     }
                   });
@@ -264,12 +280,13 @@ function Visualizer() {
               const unsafeUsers = locations.filter(user => user.safe === false).length;
               
               setUserLocations(locations);
-              setStats({
+              // Use functional update to avoid dependency on stats
+              setStats(prevStats => ({
                 totalUsers: locations.length,
                 safeUsers,
                 unsafeUsers,
-                heatmapPoints: stats.heatmapPoints
-              });
+                heatmapPoints: prevStats.heatmapPoints // Preserve existing heatmap points
+              }));
               
             } catch (error) {
               console.error('Error processing user locations:', error);
@@ -289,7 +306,7 @@ function Visualizer() {
       statusUnsubscribes.forEach(unsubscribe => unsubscribe());
       statusUnsubscribes.clear();
     };
-  }, [isRunning]);
+  }, [isRunning]); // Remove stats.heatmapPoints from dependencies
 
   return (
     <div style={{ padding: '20px' }}>
