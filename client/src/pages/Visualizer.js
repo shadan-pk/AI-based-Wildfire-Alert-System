@@ -173,6 +173,7 @@ function Visualizer() {
   }, [isRunning, selectedScenario, fetchHeatmapData]);
 
   // Firebase listener for user locations with error handling
+  // Firebase listener for user locations with error handling
   useEffect(() => {
     let unsubscribe;
     
@@ -184,21 +185,27 @@ function Visualizer() {
           async (snapshot) => {
             try {
               const locationsPromises = snapshot.docs
-                .filter(doc => doc.id !== 'structure_test') // Skip our test document
+                .filter(doc => doc.id !== 'structure_test')
                 .map(async (userDoc) => {
                   const email = userDoc.id;
                   const data = userDoc.data();
                   
-                  // Get safety status if available
+                  // First check online status
+                  const statusRef = doc(db, "userLocation", email, "status", "presence");
+                  const statusDoc = await getDoc(statusRef);
+                  const isOnline = statusDoc.exists() && statusDoc.data().online === true;
+                  
+                  if (!isOnline) {
+                    console.log(`User ${email} is offline, skipping`);
+                    return null;
+                  }
+  
+                  // Get safety status
                   let safeStatus = null;
-                  try {
-                    const situationRef = collection(userDoc.ref, 'situation');
-                    const safetyDoc = await getDoc(doc(situationRef, 'SafeOrNot'));
-                    if (safetyDoc.exists()) {
-                      safeStatus = safetyDoc.data().safe;
-                    }
-                  } catch (error) {
-                    console.log(`No safety data yet for ${email}`);
+                  const situationRef = collection(userDoc.ref, 'situation');
+                  const safetyDoc = await getDoc(doc(situationRef, 'SafeOrNot'));
+                  if (safetyDoc.exists()) {
+                    safeStatus = safetyDoc.data().safe;
                   }
                   
                   return {
@@ -211,32 +218,32 @@ function Visualizer() {
                   };
                 });
               
-              const locations = await Promise.all(locationsPromises);
-              const validLocations = locations.filter(user => user.lat !== null && user.lon !== null);
+              // Filter out null (offline users) and invalid coordinates
+              const locations = (await Promise.all(locationsPromises))
+                .filter(Boolean) // Remove null values (offline users)
+                .filter(user => user.lat !== null && user.lon !== null);
               
-              // Calculate stats
-              const safeUsers = validLocations.filter(user => user.safe === true).length;
-              const unsafeUsers = validLocations.filter(user => user.safe === false).length;
+              console.log(`Found ${locations.length} active users`);
               
-              setUserLocations(validLocations);
+              // Update stats and user locations
+              const safeUsers = locations.filter(user => user.safe === true).length;
+              const unsafeUsers = locations.filter(user => user.safe === false).length;
+              
+              setUserLocations(locations);
               setStats(prev => ({
                 ...prev,
-                totalUsers: validLocations.length,
+                totalUsers: locations.length,
                 safeUsers,
                 unsafeUsers
               }));
-            } catch (innerError) {
-              console.error('Error processing user locations:', innerError);
+            } catch (error) {
+              console.error('Error processing user locations:', error);
             }
-          },
-          (error) => {
-            console.error('Firebase listener error:', error);
-            setError(`Firebase error: ${error.message}. Please check your permissions.`);
           }
         );
-      } catch (outerError) {
-        console.error('Error setting up Firebase listener:', outerError);
-        setError(`Failed to connect to Firebase: ${outerError.message}`);
+      } catch (error) {
+        console.error('Error setting up Firebase listener:', error);
+        setError(`Failed to connect to Firebase: ${error.message}`);
       }
     }
     
