@@ -173,25 +173,64 @@ function Visualizer() {
   }, [isRunning, selectedScenario, fetchHeatmapData]);
 
   // Firebase listener for user locations with error handling
-  // Firebase listener for user locations with error handling
   useEffect(() => {
-    let unsubscribe;
+    let userUnsubscribe;
+    let statusUnsubscribes = new Map();
     
     if (isRunning) {
       try {
         const userLocationsCollection = collection(db, 'userLocation');
         
-        unsubscribe = onSnapshot(userLocationsCollection, 
+        userUnsubscribe = onSnapshot(userLocationsCollection, 
           async (snapshot) => {
             try {
+              // Clear previous status listeners
+              statusUnsubscribes.forEach(unsubscribe => unsubscribe());
+              statusUnsubscribes.clear();
+
               const locationsPromises = snapshot.docs
                 .filter(doc => doc.id !== 'structure_test')
                 .map(async (userDoc) => {
                   const email = userDoc.id;
                   const data = userDoc.data();
                   
-                  // First check online status
-                  const statusRef = doc(db, "userLocation", email, "status", "presence");
+                  // Create proper document references
+                  const userDocRef = doc(db, 'userLocation', email);
+                  const statusRef = doc(db, 'userLocation', email, 'status', 'presence');
+                  
+                  const statusUnsubscribe = onSnapshot(statusRef, async (statusDoc) => {
+                    const isOnline = statusDoc.exists() && statusDoc.data().online === true;
+                    
+                    if (!isOnline) {
+                      setUserLocations(prevLocations => 
+                        prevLocations.filter(u => u.email !== email)
+                      );
+                    } else {
+                      // Re-fetch user data when they come back online
+                      const userData = (await getDoc(userDocRef)).data();
+                      const situationRef = doc(db, 'userLocation', email, 'situation', 'SafeOrNot');
+                      const safetyDoc = await getDoc(situationRef);
+                      const safeStatus = safetyDoc.exists() ? safetyDoc.data().safe : null;
+
+                      const updatedUser = {
+                        uid: email,
+                        email: email,
+                        lat: userData.latitude || null,
+                        lon: userData.longitude || null,
+                        timestamp: userData.timestamp?.toDate() || new Date(),
+                        safe: safeStatus
+                      };
+
+                      setUserLocations(prevLocations => {
+                        const filtered = prevLocations.filter(u => u.email !== email);
+                        return [...filtered, updatedUser];
+                      });
+                    }
+                  });
+                  
+                  statusUnsubscribes.set(email, statusUnsubscribe);
+
+                  // Initial online check
                   const statusDoc = await getDoc(statusRef);
                   const isOnline = statusDoc.exists() && statusDoc.data().online === true;
                   
@@ -199,17 +238,14 @@ function Visualizer() {
                     console.log(`User ${email} is offline, skipping`);
                     return null;
                   }
-  
-                  // Get safety status
-                  let safeStatus = null;
-                  const situationRef = collection(userDoc.ref, 'situation');
-                  const safetyDoc = await getDoc(doc(situationRef, 'SafeOrNot'));
-                  if (safetyDoc.exists()) {
-                    safeStatus = safetyDoc.data().safe;
-                  }
+
+                  // Fetch safety status using correct document reference
+                  const safetyRef = doc(db, 'userLocation', email, 'situation', 'SafeOrNot');
+                  const safetyDoc = await getDoc(safetyRef);
+                  const safeStatus = safetyDoc.exists() ? safetyDoc.data().safe : null;
                   
                   return {
-                    uid: userDoc.id,
+                    uid: email,
                     email: email,
                     lat: data.latitude || null,
                     lon: data.longitude || null,
@@ -218,24 +254,23 @@ function Visualizer() {
                   };
                 });
               
-              // Filter out null (offline users) and invalid coordinates
+              // Process all valid locations
               const locations = (await Promise.all(locationsPromises))
-                .filter(Boolean) // Remove null values (offline users)
+                .filter(Boolean)
                 .filter(user => user.lat !== null && user.lon !== null);
               
-              console.log(`Found ${locations.length} active users`);
-              
-              // Update stats and user locations
+              // Update stats based on current locations
               const safeUsers = locations.filter(user => user.safe === true).length;
               const unsafeUsers = locations.filter(user => user.safe === false).length;
               
               setUserLocations(locations);
-              setStats(prev => ({
-                ...prev,
+              setStats({
                 totalUsers: locations.length,
                 safeUsers,
-                unsafeUsers
-              }));
+                unsafeUsers,
+                heatmapPoints: stats.heatmapPoints
+              });
+              
             } catch (error) {
               console.error('Error processing user locations:', error);
             }
@@ -248,9 +283,11 @@ function Visualizer() {
     }
     
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
+      if (userUnsubscribe) {
+        userUnsubscribe();
       }
+      statusUnsubscribes.forEach(unsubscribe => unsubscribe());
+      statusUnsubscribes.clear();
     };
   }, [isRunning]);
 
