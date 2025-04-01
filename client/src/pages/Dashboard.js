@@ -158,73 +158,77 @@ const Dashboard = () => {
     });
 
   return (
-    <div className="p-6 bg-gray-100 min-h-screen">
+    <div className="p-6 bg-gray-100 min-h-[calc(100vh-4rem)]">
       <h1 className="text-3xl font-bold mb-6 text-gray-800">User Management Dashboard</h1>
       
-      {/* Add tabs */}
-      <div className="flex space-x-2 mb-4">
-        <button
-          onClick={() => setActiveTab('online')}
-          className={`px-4 py-2 rounded-lg ${
-            activeTab === 'online' 
-              ? 'bg-blue-500 text-white' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          Online Users ({allUsers.filter(u => u.isOnline).length})
-        </button>
-        <button
-          onClick={() => setActiveTab('offline')}
-          className={`px-4 py-2 rounded-lg ${
-            activeTab === 'offline' 
-              ? 'bg-blue-500 text-white' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          Offline Users ({allUsers.filter(u => !u.isOnline).length})
-        </button>
-        <button
-          onClick={() => setActiveTab('all')}
-          className={`px-4 py-2 rounded-lg ${
-            activeTab === 'all' 
-              ? 'bg-blue-500 text-white' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          All Users ({allUsers.length})
-        </button>
-      </div>
+      {/* Main content wrapper */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[calc(100vh-11rem)]">
+        {/* Left Section - User Management */}
+        <div className="bg-white rounded-lg shadow p-6 max-h-[calc(100vh-11rem)] overflow-hidden">
+          <h2 className="text-2xl font-semibold mb-4 text-gray-800">User Management</h2>
+          
+          {/* Status Tabs */}
+          <div className="flex space-x-2 mb-4">
+            <button
+              onClick={() => setActiveTab('online')}
+              className={`px-4 py-2 rounded-lg ${
+                activeTab === 'online' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Online Users ({allUsers.filter(u => u.isOnline).length})
+            </button>
+            <button
+              onClick={() => setActiveTab('offline')}
+              className={`px-4 py-2 rounded-lg ${
+                activeTab === 'offline' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Offline Users ({allUsers.filter(u => !u.isOnline).length})
+            </button>
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`px-4 py-2 rounded-lg ${
+                activeTab === 'all' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              All Users ({allUsers.length})
+            </button>
+          </div>
 
-      {/* Search bar */}
-      <div className="mb-6">
-        <input
-          type="text"
-          placeholder="Search users..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+          {/* Search Bar */}
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
 
-      {/* Main content area - Users List (left) and User Details (right) */}
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Users List - Now on left side */}
-        <div className="w-full lg:w-2/5">
-          <h2 className="text-xl font-semibold mb-4 text-gray-700">Users</h2>
+          {/* Users List */}
           {loading ? (
-            <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
+            <div className="flex justify-center items-center h-64">
               <p>Loading users...</p>
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
+            <div className="flex justify-center items-center h-64">
               <p className="text-gray-500">No users found.</p>
             </div>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-y-auto max-h-[calc(100vh-24rem)]">
               {filteredUsers.map((user) => (
                 <div 
                   key={user.email} 
-                  className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors ${selectedUser?.email === user.email ? 'bg-blue-50' : ''}`}
+                  className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors ${
+                    selectedUser?.email === user.email ? 'bg-blue-50' : ''
+                  }`}
                   onClick={() => setSelectedUser(user)}
                 >
                   <div className="flex justify-between items-center">
@@ -256,28 +260,28 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* User Details Section - Now on right side with more space */}
-        <div className="w-full lg:w-3/5">
+        {/* Right Section - User Information */}
+
+        
+        <div className="bg-white rounded-lg shadow max-h-[calc(100vh-11rem)] overflow-hidden">
           {selectedUser ? (
-            <div className="bg-white rounded-lg shadow h-full">
-              <div className="p-4 border-b">
-                <h2 className="text-xl font-semibold text-gray-700">User Information</h2>
+            <div className="h-full">
+              <div className="p-6 border-b">
+                <h2 className="text-2xl font-semibold text-gray-800">User Information</h2>
               </div>
               
-              {/* Tabbed interface for user details and reports */}
-              <div className="p-4">
-                {/* User Details Component */}
+              <div className="p-6">
                 <UserDetails selectedUser={selectedUser} db={db} />
                 
-                {/* User Reports Component */}
                 <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-3 text-gray-700">User Reports</h3>
+                  <h3 className="text-xl font-semibold mb-4 text-gray-700">User Reports</h3>
+                  
                   <UserReports selectedUser={selectedUser} />
                 </div>
               </div>
             </div>
           ) : (
-            <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
+            <div className="flex justify-center items-center h-full min-h-[calc(100vh-16rem)]">
               <p className="text-gray-500">Select a user to view details</p>
             </div>
           )}
