@@ -195,29 +195,21 @@ const Dashboard = () => {
         </button>
       </div>
 
-      <div className="flex flex-col md:flex-row justify-between mb-6">
-        <div className="mb-4 md:mb-0 w-full md:w-1/2 md:mr-4">
-          <input
-            type="text"
-            placeholder="Search users..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        {/* <select 
-          value={sortBy} 
-          onChange={(e) => setSortBy(e.target.value)}
-          className="p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="name">Sort by Name</option>
-          <option value="email">Sort by Email</option>
-        </select> */}
+      {/* Search bar */}
+      <div className="mb-6">
+        <input
+          type="text"
+          placeholder="Search users..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
       </div>
 
-      <div className="flex flex-col md:flex-row">
-        {/* Users List */}
-        <div className="w-full md:w-1/2 md:mr-4 mb-6 md:mb-0">
+      {/* Main content area - Users List (left) and User Details (right) */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Users List - Now on left side */}
+        <div className="w-full lg:w-2/5">
           <h2 className="text-xl font-semibold mb-4 text-gray-700">Users</h2>
           {loading ? (
             <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
@@ -264,16 +256,16 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* User Details Section */}
-        <div className="w-full md:w-1/2">
+        {/* User Details Section - Now on right side with more space */}
+        <div className="w-full lg:w-3/5">
           {selectedUser ? (
-            <div className="bg-white rounded-lg shadow">
+            <div className="bg-white rounded-lg shadow h-full">
               <div className="p-4 border-b">
                 <h2 className="text-xl font-semibold text-gray-700">User Information</h2>
               </div>
               
               {/* Tabbed interface for user details and reports */}
-              <div className="tabs p-4">
+              <div className="p-4">
                 {/* User Details Component */}
                 <UserDetails selectedUser={selectedUser} db={db} />
                 
