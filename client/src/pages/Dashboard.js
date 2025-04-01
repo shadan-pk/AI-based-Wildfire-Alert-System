@@ -10,10 +10,10 @@ import {
 } from 'firebase/firestore';
 import { db } from '../FirebaseConfig'; // Adjust this import to match your firebase config
 import { getAuth } from 'firebase/auth';
+import UserReports from './UserReports'; // Import the new component
 
 const Dashboard = () => {
   const [onlineUsers, setOnlineUsers] = useState([]);
-  const [userReports, setUserReports] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [alertUserId, setAlertUserId] = useState(null);
   const [message, setMessage] = useState('');
@@ -79,38 +79,6 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Fetch reports for a selected user
-  useEffect(() => {
-    if (!selectedUser) {
-      setUserReports([]);
-      return;
-    }
-    
-    const fetchReports = async () => {
-      try {
-        const reportsRef = collection(db, "userLocation", selectedUser.email, "reports");
-        const reportsSnapshot = await getDocs(reportsRef);
-        
-        const reportsData = [];
-        reportsSnapshot.forEach(doc => {
-          // Skip metadata document
-          if (doc.id !== 'metadata') {
-            reportsData.push({
-              id: doc.id,
-              ...doc.data()
-            });
-          }
-        });
-        
-        setUserReports(reportsData);
-      } catch (error) {
-        console.error("Error fetching reports:", error);
-      }
-    };
-    
-    fetchReports();
-  }, [selectedUser]);
-
   const handleSendAlert = async (userId) => {
     try {
       // Here you would implement your alert sending functionality
@@ -147,6 +115,15 @@ const Dashboard = () => {
       }
       return (a.email || '').localeCompare(b.email || '');
     });
+
+  // Format timestamp for display
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'Unknown';
+    if (timestamp.toDate) {
+      return timestamp.toDate().toLocaleString();
+    }
+    return new Date(timestamp).toLocaleString();
+  };
 
   return (
     <div className="p-6 bg-gray-100 min-h-screen">
@@ -240,33 +217,13 @@ const Dashboard = () => {
                 <p className="mb-2">
                   <span className="font-medium">Last Updated:</span> 
                   {selectedUser.timestamp ? 
-                    ` ${new Date(selectedUser.timestamp.toDate()).toLocaleString()}` : 
+                    ` ${formatTimestamp(selectedUser.timestamp)}` : 
                     ' Not available'}
                 </p>
               </div>
 
-              <h3 className="text-lg font-semibold mb-3 text-gray-700">Recent Reports</h3>
-              {userReports.length === 0 ? (
-                <p className="text-gray-500">No reports found for this user.</p>
-              ) : (
-                <div className="space-y-3">
-                  {userReports.map(report => (
-                    <div key={report.id} className="p-3 bg-gray-50 rounded border border-gray-200">
-                      <p className="font-medium">{report.id}</p>
-                      <div className="text-sm text-gray-700 mt-1">
-                        {Object.entries(report)
-                          .filter(([key]) => key !== 'id')
-                          .map(([key, value]) => (
-                            <div key={key} className="mb-1">
-                              <span className="font-medium">{key}: </span>
-                              {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Using the UserReports component */}
+              <UserReports selectedUser={selectedUser} />
             </div>
           ) : (
             <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
@@ -300,6 +257,7 @@ const Dashboard = () => {
               <button
                 onClick={() => handleSendAlert(alertUserId)}
                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                disabled={!message.trim()}
               >
                 Send
               </button>
