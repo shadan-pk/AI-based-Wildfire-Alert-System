@@ -3,20 +3,15 @@ import {
   collection, 
   doc, 
   getDoc, 
-  query, 
-  where, 
   onSnapshot,
   setDoc,
-  getDocs,
-  addDoc,
   serverTimestamp 
 } from 'firebase/firestore';
 import { db } from '../FirebaseConfig'; // Adjust this import to match your firebase config
-import { getAuth,onAuthStateChanged } from 'firebase/auth';
 import UserReports from './UserReports'; // Import the new component
+import UserDetails from './UserDetails'; // Import the new UserDetails component
 
 const Dashboard = () => {
-  const [onlineUsers, setOnlineUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [alertUserId, setAlertUserId] = useState(null);
   const [message, setMessage] = useState('');
@@ -25,20 +20,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [allUsers, setAllUsers] = useState([]);
   const [activeTab, setActiveTab] = useState('online');
-  const [currentUser, setCurrentUser] = useState(null);
-
-
-
-  // const auth = getAuth();
-  // const currentUser = auth.currentUser;
-  useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
-  
-    return () => unsubscribe();
-  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -138,7 +119,6 @@ const Dashboard = () => {
   
   const handleSendAlert = async (userId) => {
     try {
-  
       const alertId = `alert_${Date.now()}`;
       const alertRef = doc(db, "userLocation", userId, "alerts", alertId);
       
@@ -146,7 +126,7 @@ const Dashboard = () => {
         message: message,
         timestamp: serverTimestamp(),
         type: 'admin_alert',
-        sender: currentUser?.email || 'system',
+        sender: 'system',
         severity: 'high',
         read: false
       });
@@ -176,15 +156,6 @@ const Dashboard = () => {
       }
       return (a.email || '').localeCompare(b.email || '');
     });
-
-  // Format timestamp for display
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'Unknown';
-    if (timestamp.toDate) {
-      return timestamp.toDate().toLocaleString();
-    }
-    return new Date(timestamp).toLocaleString();
-  };
 
   return (
     <div className="p-6 bg-gray-100 min-h-screen">
@@ -245,16 +216,16 @@ const Dashboard = () => {
       </div>
 
       <div className="flex flex-col md:flex-row">
-        {/* Online Users List */}
+        {/* Users List */}
         <div className="w-full md:w-1/2 md:mr-4 mb-6 md:mb-0">
-          <h2 className="text-xl font-semibold mb-4 text-gray-700">Online Users</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-700">Users</h2>
           {loading ? (
             <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
               <p>Loading users...</p>
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
-              <p className="text-gray-500">No online users found.</p>
+              <p className="text-gray-500">No users found.</p>
             </div>
           ) : (
             <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -293,36 +264,25 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* User Details and Reports */}
+        {/* User Details Section */}
         <div className="w-full md:w-1/2">
           {selectedUser ? (
-            <div className="bg-white rounded-lg shadow p-4">
-              <h2 className="text-xl font-semibold mb-4 text-gray-700">User Details</h2>
-              <div className="mb-6">
-                <p className="mb-2"><span className="font-medium">Name:</span> {selectedUser.name}</p>
-                <p className="mb-2"><span className="font-medium">Email:</span> {selectedUser.email}</p>
-                {selectedUser.phone && (
-                  <p className="mb-2"><span className="font-medium">Phone:</span> {selectedUser.phone}</p>
-                )}
-                {selectedUser.address && (
-                  <p className="mb-2"><span className="font-medium">Address:</span> {selectedUser.address}</p>
-                )}
-                <p className="mb-2">
-                  <span className="font-medium">Location:</span> 
-                  {selectedUser.location ? 
-                    ` Lat: ${selectedUser.location.latitude.toFixed(6)}, Lng: ${selectedUser.location.longitude.toFixed(6)}` : 
-                    ' Not available'}
-                </p>
-                <p className="mb-2">
-                  <span className="font-medium">Last Updated:</span> 
-                  {selectedUser.timestamp ? 
-                    ` ${formatTimestamp(selectedUser.timestamp)}` : 
-                    ' Not available'}
-                </p>
+            <div className="bg-white rounded-lg shadow">
+              <div className="p-4 border-b">
+                <h2 className="text-xl font-semibold text-gray-700">User Information</h2>
               </div>
-
-              {/* Using the UserReports component */}
-              <UserReports selectedUser={selectedUser} />
+              
+              {/* Tabbed interface for user details and reports */}
+              <div className="tabs p-4">
+                {/* User Details Component */}
+                <UserDetails selectedUser={selectedUser} db={db} />
+                
+                {/* User Reports Component */}
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold mb-3 text-gray-700">User Reports</h3>
+                  <UserReports selectedUser={selectedUser} />
+                </div>
+              </div>
             </div>
           ) : (
             <div className="flex justify-center items-center h-64 bg-white rounded-lg shadow">
