@@ -6,10 +6,13 @@ import {
   query, 
   where, 
   onSnapshot,
-  getDocs
+  setDoc,
+  getDocs,
+  addDoc,
+  serverTimestamp 
 } from 'firebase/firestore';
 import { db } from '../FirebaseConfig'; // Adjust this import to match your firebase config
-import { getAuth } from 'firebase/auth';
+import { getAuth,onAuthStateChanged } from 'firebase/auth';
 import UserReports from './UserReports'; // Import the new component
 
 const Dashboard = () => {
@@ -22,9 +25,20 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [allUsers, setAllUsers] = useState([]);
   const [activeTab, setActiveTab] = useState('online');
+  const [currentUser, setCurrentUser] = useState(null);
 
-  const auth = getAuth();
-  const currentUser = auth.currentUser;
+
+
+  // const auth = getAuth();
+  // const currentUser = auth.currentUser;
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+  
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -37,54 +51,64 @@ const Dashboard = () => {
         userStatusListeners.forEach(unsubscribe => unsubscribe());
         userStatusListeners.clear();
 
-        const usersData = new Map();
+        // Process all users first
+        const processedUsers = await Promise.all(snapshot.docs
+          .filter(doc => doc.id !== 'structure_test')
+          .map(async (userDoc) => {
+            const userEmail = userDoc.id;
+            const locationData = userDoc.data();
+            
+            // Get user details
+            const userDetailsDoc = await getDoc(doc(db, "users", userEmail));
+            const userData = userDetailsDoc.exists() ? userDetailsDoc.data() : {};
+            
+            // Get initial online status
+            const presenceRef = doc(db, "userLocation", userEmail, "status", "presence");
+            const presenceDoc = await getDoc(presenceRef);
+            const isOnline = presenceDoc.exists() && presenceDoc.data().online === true;
+            
+            return {
+              email: userEmail,
+              name: userData.displayName || `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || userEmail.split('@')[0],
+              location: {
+                latitude: locationData.latitude,
+                longitude: locationData.longitude
+              },
+              timestamp: locationData.timestamp,
+              isOnline,
+              phone: userData.phone,
+              address: userData.address,
+              uid: userEmail
+            };
+          }));
 
-        // First, get all user documents
-        for (const userDoc of snapshot.docs) {
-          const userEmail = userDoc.id;
-          if (userEmail === 'structure_test') continue;
+        // Update all users at once
+        setAllUsers(processedUsers);
+        setLoading(false);
 
-          const locationData = userDoc.data();
-          
-          // Set up individual status listener for each user
-          const presenceRef = doc(db, "userLocation", userEmail, "status", "presence");
-          const statusListener = onSnapshot(presenceRef, async (statusDoc) => {
+        // Set up status listeners after initial load
+        processedUsers.forEach(user => {
+          const presenceRef = doc(db, "userLocation", user.email, "status", "presence");
+          const statusListener = onSnapshot(presenceRef, (statusDoc) => {
             const isOnline = statusDoc.exists() && statusDoc.data().online === true;
             
-            // Get user details from users collection if not already fetched
-            if (!usersData.has(userEmail)) {
-              const userDetailsDoc = await getDoc(doc(db, "users", userEmail));
-              const userData = userDetailsDoc.exists() ? userDetailsDoc.data() : {};
+            setAllUsers(prev => {
+              const updatedUsers = prev.map(u => 
+                u.email === user.email ? { ...u, isOnline } : u
+              );
               
-              const updatedUser = {
-                email: userEmail,
-                name: userData.displayName || `${userData.firstName || ''} ${userData.lastName || ''}`.trim(),
-                location: {
-                  latitude: locationData.latitude,
-                  longitude: locationData.longitude
-                },
-                timestamp: locationData.timestamp,
-                isOnline,
-                phone: userData.phone,
-                address: userData.address,
-                uid: userEmail // Use email as uid if not specified
-              };
-
-              // Update state with new user data
-              setAllUsers(prev => {
-                const filtered = prev.filter(u => u.email !== userEmail);
-                return [...filtered, updatedUser];
-              });
-            } else {
-              // Just update online status for existing user
-              setAllUsers(prev => prev.map(user => 
-                user.email === userEmail ? { ...user, isOnline } : user
-              ));
-            }
+              // Clear selected user if they go offline and we're in online tab
+              if (!isOnline && activeTab === 'online' && selectedUser?.email === user.email) {
+                setSelectedUser(null);
+              }
+              
+              return updatedUsers;
+            });
           });
+        
+          userStatusListeners.set(user.email, statusListener);
+        });
 
-          userStatusListeners.set(userEmail, statusListener);
-        }
       } catch (error) {
         console.error('Error processing users:', error);
         setLoading(false);
@@ -98,28 +122,41 @@ const Dashboard = () => {
     };
   }, []);
 
+  useEffect(() => {
+    // Clear selected user if they don't match the current tab filter
+    if (selectedUser) {
+      const isVisible = 
+        activeTab === 'all' || 
+        (activeTab === 'online' && selectedUser.isOnline) ||
+        (activeTab === 'offline' && !selectedUser.isOnline);
+      
+      if (!isVisible) {
+        setSelectedUser(null);
+      }
+    }
+  }, [activeTab, selectedUser]);
+  
   const handleSendAlert = async (userId) => {
     try {
-      // Here you would implement your alert sending functionality
-      // This could be through Firebase Cloud Messaging or another method
+  
+      const alertId = `alert_${Date.now()}`;
+      const alertRef = doc(db, "userLocation", userId, "alerts", alertId);
       
-      // Example implementation (replace with your actual implementation)
-      const userRef = doc(db, "users", userId);
-      
-      // You might want to add a subcollection for alerts
-      // const alertsRef = collection(userRef, "alerts");
-      // await addDoc(alertsRef, {
-      //   message,
-      //   timestamp: serverTimestamp(),
-      //   read: false
-      // });
+      await setDoc(alertRef, {
+        message: message,
+        timestamp: serverTimestamp(),
+        type: 'admin_alert',
+        sender: currentUser?.email || 'system',
+        severity: 'high',
+        read: false
+      });
       
       setAlertUserId(null);
       setMessage('');
       alert('Alert sent successfully!');
     } catch (error) {
       console.error('Error sending alert:', error);
-      alert('Failed to send alert.');
+      alert('Failed to send alert: ' + error.message);
     }
   };
 
