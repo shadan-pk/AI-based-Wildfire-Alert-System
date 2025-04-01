@@ -205,14 +205,14 @@ const Dashboard = () => {
             className="w-full p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <select 
+        {/* <select 
           value={sortBy} 
           onChange={(e) => setSortBy(e.target.value)}
           className="p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="name">Sort by Name</option>
           <option value="email">Sort by Email</option>
-        </select>
+        </select> */}
       </div>
 
       <div className="flex flex-col md:flex-row">

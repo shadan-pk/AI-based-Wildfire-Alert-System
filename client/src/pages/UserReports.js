@@ -74,10 +74,68 @@ const UserReports = ({ selectedUser }) => {
     }
   };
 
+  // Get color styling based on severity
+// Improved severity styles function with consistent colors and stronger contrast
+const getSeverityStyles = (severity) => {
+    if (!severity) return {
+      borderColor: 'border-gray-300',
+      bgColor: 'bg-gray-100',
+      textColor: 'text-gray-700',
+      badgeColor: 'bg-gray-200 text-gray-800'
+    };
+  
+    const severityLower = typeof severity === 'string' ? severity.toLowerCase() : '';
+    
+    switch (severityLower) {
+      case 'high':
+      case 'critical':
+      case 'severe':
+        return {
+          borderColor: 'border-red-500',
+          bgColor: 'bg-red-100',
+          textColor: 'text-red-800',
+          badgeColor: 'bg-red-600 text-white'
+        };
+      case 'medium':
+      case 'moderate':
+        return {
+          borderColor: 'border-orange-500',
+          bgColor: 'bg-orange-100',
+          textColor: 'text-orange-800',
+          badgeColor: 'bg-orange-500 text-white'
+        };
+      case 'low':
+      case 'minor':
+        return {
+          // Fixed inconsistency: was using green border but yellow text
+          borderColor: 'border-yellow-500',
+          bgColor: 'bg-yellow-100',
+          textColor: 'text-yellow-800',
+          badgeColor: 'bg-yellow-500 text-white'
+        };
+      case 'info':
+      case 'information':
+      case 'informational':
+        return {
+          borderColor: 'border-blue-500',
+          bgColor: 'bg-blue-100',
+          textColor: 'text-blue-800',
+          badgeColor: 'bg-blue-600 text-white'
+        };
+      default:
+        return {
+          borderColor: 'border-gray-300',
+          bgColor: 'bg-gray-100',
+          textColor: 'text-gray-700',
+          badgeColor: 'bg-gray-600 text-white'
+        };
+    }
+  };
+
   // Display report fields in a consistent, ordered way
   const renderReportFields = (report) => {
     // Define key order for displaying report fields
-    const keyOrder = ['location', 'address', 'reason', 'description', 'photoURL'];
+    const keyOrder = ['severity', 'location', 'address', 'reason', 'description', 'photoURL'];
     
     // Get all keys that aren't special fields
     const allKeys = Object.keys(report).filter(key => 
@@ -93,16 +151,22 @@ const UserReports = ({ selectedUser }) => {
     return sortedKeys.map(key => (
       <div key={key} className="mb-1">
         <span className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
-        {typeof report[key] === 'object' && report[key] !== null ? 
-          JSON.stringify(report[key]) : 
-          String(report[key])}
+        {key === 'severity' ? (
+          <span className={`px-2 py-0.5 rounded text-xs ${getSeverityStyles(report[key]).badgeColor}`}>
+            {String(report[key])}
+          </span>
+        ) : (
+          typeof report[key] === 'object' && report[key] !== null ? 
+            JSON.stringify(report[key]) : 
+            String(report[key])
+        )}
       </div>
     ));
   };
 
   return (
     <div className="bg-white rounded-lg shadow p-4">
-      <h3 className="text-lg font-medium mb-4">User Reports</h3>
+      {/* <h3 className="text-lg font-medium mb-4">User Reports</h3> */}
       
       {reportsLoading ? (
         <div className="flex justify-center items-center h-32 bg-gray-50 rounded">
@@ -112,72 +176,83 @@ const UserReports = ({ selectedUser }) => {
         <p className="text-gray-500 text-center py-4">No reports found for this user.</p>
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto p-1">
-          {userReports.map(report => (
-            <div key={report.id} className="p-4 bg-gray-50 rounded border border-gray-200">
-              <div className="flex justify-between items-start">
-                <p className="font-medium text-blue-600">Report #{report.id}</p>
-                {report.timestamp && (
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {formatTimestamp(report.timestamp)}
-                  </span>
-                )}
-              </div>
-              
-              <div className="text-sm text-gray-700 mt-3 space-y-1">
-                {renderReportFields(report)}
-              </div>
-              
-              <div className="mt-4 flex items-center justify-between border-t pt-3">
-                <span className="text-sm">
-                  Status: 
-                  <span className={`ml-1 px-2 py-1 rounded text-xs ${
-                    report.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                    report.status === 'approved' ? 'bg-green-100 text-green-800' : 
-                    report.status === 'rejected' ? 'bg-red-100 text-red-800' : 
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {report.status || 'pending'}
-                  </span>
-                </span>
-                
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleStatusChange(report.id, 'approved')}
-                    disabled={report.status === 'approved'}
-                    className={`px-2 py-1 rounded text-xs ${
-                      report.status === 'approved'
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'bg-green-500 text-white hover:bg-green-600'
-                    }`}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleStatusChange(report.id, 'rejected')}
-                    disabled={report.status === 'rejected'}
-                    className={`px-2 py-1 rounded text-xs ${
-                      report.status === 'rejected'
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'bg-red-500 text-white hover:bg-red-600'
-                    }`}
-                  >
-                    Reject
-                  </button>
-                  <button
-                    onClick={() => handleStatusChange(report.id, 'pending')}
-                    disabled={report.status === 'pending'}
-                    className={`px-2 py-1 rounded text-xs ${
-                      report.status === 'pending'
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                    }`}
-                  >
-                    Pending
-                  </button>
+          {userReports.map(report => {
+            const severityStyles = getSeverityStyles(report.severity);
+            
+            return (
+              <div 
+                key={report.id} 
+                className={`p-4 rounded border ${severityStyles.borderColor} ${severityStyles.bgColor}`}
+              >
+                <div className="flex justify-between items-start">
+                  <p className={`font-medium ${report.severity ? severityStyles.textColor : 'text-blue-600'}`}>
+                    Report #{report.id}
+                  </p>
+                  {report.timestamp && (
+                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      {formatTimestamp(report.timestamp)}
+                    </span>
+                  )}
                 </div>
+                
+                <div className="text-sm text-gray-700 mt-3 space-y-1">
+                  {renderReportFields(report)}
+                </div>
+                
+                <div className="mt-4 flex items-center justify-between border-t border-gray-300 pt-4">
+                    <span className="text-sm font-medium flex items-center">
+                        Status: 
+                        <span className={`ml-2 px-3 py-1 rounded-md text-sm font-semibold ${
+                        report.status === 'pending' ? 'bg-blue-600 text-white' : 
+                        report.status === 'approved' ? 'bg-green-600 text-white' : 
+                        report.status === 'rejected' ? 'bg-red-600 text-white' : 
+                        'bg-gray-600 text-white'
+                        }`}>
+                        {report.status || 'pending'}
+                        </span>
+                    </span>
+                    
+                    <div className="flex gap-3">
+                        <button
+                        onClick={() => handleStatusChange(report.id, 'approved')}
+                        disabled={report.status === 'approved'}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                            report.status === 'approved'
+                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                            : 'bg-green-600 text-white hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-1'
+                        }`}
+                        >
+                        Approve
+                        </button>
+                        <button
+                        onClick={() => handleStatusChange(report.id, 'rejected')}
+                        disabled={report.status === 'rejected'}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                            report.status === 'rejected'
+                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                            : 'bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-1'
+                        }`}
+                        >
+                        Reject
+                        </button>
+                        <button
+                        onClick={() => handleStatusChange(report.id, 'pending')}
+                        disabled={report.status === 'pending'}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                            report.status === 'pending'
+                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                            : 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-1'
+                        }`}
+                        >
+                        Pending
+                        </button>
+                        </div>
+                    
+                    </div>
               </div>
-            </div>
-          ))}
+
+            );
+          })}
         </div>
       )}
     </div>
