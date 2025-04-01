@@ -20,63 +20,82 @@ const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [loading, setLoading] = useState(true);
+  const [allUsers, setAllUsers] = useState([]);
+  const [activeTab, setActiveTab] = useState('online');
 
   const auth = getAuth();
   const currentUser = auth.currentUser;
 
-  // Listen for online users in real-time
   useEffect(() => {
     setLoading(true);
-    
-    // Create a query to fetch all documents in userLocation collection
     const userLocationsRef = collection(db, "userLocation");
-    
+    let userStatusListeners = new Map();
+
     const unsubscribe = onSnapshot(userLocationsRef, async (snapshot) => {
-      const onlineUsersData = [];
-      
-      // For each user location document
-      for (const userDoc of snapshot.docs) {
-        const userEmail = userDoc.id;
-        
-        // Get the presence status document
-        const presenceDoc = await getDoc(doc(db, "userLocation", userEmail, "status", "presence"));
-        
-        // Only include users who are online
-        if (presenceDoc.exists() && presenceDoc.data().online === true) {
-          // Get the user's location data
+      try {
+        // Clear previous status listeners
+        userStatusListeners.forEach(unsubscribe => unsubscribe());
+        userStatusListeners.clear();
+
+        const usersData = new Map();
+
+        // First, get all user documents
+        for (const userDoc of snapshot.docs) {
+          const userEmail = userDoc.id;
+          if (userEmail === 'structure_test') continue;
+
           const locationData = userDoc.data();
           
-          // Find the user details from users collection
-          const usersSnapshot = await getDocs(
-            query(collection(db, "users"), where("email", "==", userEmail))
-          );
-          
-          let userData = {};
-          if (!usersSnapshot.empty) {
-            userData = usersSnapshot.docs[0].data();
-            userData.uid = usersSnapshot.docs[0].id;
-          }
-          
-          onlineUsersData.push({
-            email: userEmail,
-            name: userData.firstName ? `${userData.firstName} ${userData.lastName || ''}` : 'Anonymous',
-            location: {
-              latitude: locationData.latitude,
-              longitude: locationData.longitude
-            },
-            timestamp: locationData.timestamp,
-            uid: userData.uid,
-            phone: userData.phone,
-            address: userData.address
+          // Set up individual status listener for each user
+          const presenceRef = doc(db, "userLocation", userEmail, "status", "presence");
+          const statusListener = onSnapshot(presenceRef, async (statusDoc) => {
+            const isOnline = statusDoc.exists() && statusDoc.data().online === true;
+            
+            // Get user details from users collection if not already fetched
+            if (!usersData.has(userEmail)) {
+              const userDetailsDoc = await getDoc(doc(db, "users", userEmail));
+              const userData = userDetailsDoc.exists() ? userDetailsDoc.data() : {};
+              
+              const updatedUser = {
+                email: userEmail,
+                name: userData.displayName || `${userData.firstName || ''} ${userData.lastName || ''}`.trim(),
+                location: {
+                  latitude: locationData.latitude,
+                  longitude: locationData.longitude
+                },
+                timestamp: locationData.timestamp,
+                isOnline,
+                phone: userData.phone,
+                address: userData.address,
+                uid: userEmail // Use email as uid if not specified
+              };
+
+              // Update state with new user data
+              setAllUsers(prev => {
+                const filtered = prev.filter(u => u.email !== userEmail);
+                return [...filtered, updatedUser];
+              });
+            } else {
+              // Just update online status for existing user
+              setAllUsers(prev => prev.map(user => 
+                user.email === userEmail ? { ...user, isOnline } : user
+              ));
+            }
           });
+
+          userStatusListeners.set(userEmail, statusListener);
         }
+      } catch (error) {
+        console.error('Error processing users:', error);
+        setLoading(false);
       }
-      
-      setOnlineUsers(onlineUsersData);
-      setLoading(false);
     });
-    
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribe();
+      userStatusListeners.forEach(unsubscribe => unsubscribe());
+      userStatusListeners.clear();
+    };
   }, []);
 
   const handleSendAlert = async (userId) => {
@@ -104,14 +123,19 @@ const Dashboard = () => {
     }
   };
 
-  const filteredUsers = onlineUsers
-    .filter(user => 
-      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+  const filteredUsers = allUsers
+    .filter(user => {
+      const userName = user.name || 'Unknown User';
+      const matchesSearch = userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesTab = activeTab === 'all' || 
+                        (activeTab === 'online' && user.isOnline) ||
+                        (activeTab === 'offline' && !user.isOnline);
+      return matchesSearch && matchesTab;
+    })
     .sort((a, b) => {
       if (sortBy === 'name') {
-        return (a.name || '').localeCompare(b.name || '');
+        return (a.name || 'Unknown User').localeCompare(b.name || 'Unknown User');
       }
       return (a.email || '').localeCompare(b.email || '');
     });
@@ -129,6 +153,40 @@ const Dashboard = () => {
     <div className="p-6 bg-gray-100 min-h-screen">
       <h1 className="text-3xl font-bold mb-6 text-gray-800">User Management Dashboard</h1>
       
+      {/* Add tabs */}
+      <div className="flex space-x-2 mb-4">
+        <button
+          onClick={() => setActiveTab('online')}
+          className={`px-4 py-2 rounded-lg ${
+            activeTab === 'online' 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Online Users ({allUsers.filter(u => u.isOnline).length})
+        </button>
+        <button
+          onClick={() => setActiveTab('offline')}
+          className={`px-4 py-2 rounded-lg ${
+            activeTab === 'offline' 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Offline Users ({allUsers.filter(u => !u.isOnline).length})
+        </button>
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`px-4 py-2 rounded-lg ${
+            activeTab === 'all' 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          All Users ({allUsers.length})
+        </button>
+      </div>
+
       <div className="flex flex-col md:flex-row justify-between mb-6">
         <div className="mb-4 md:mb-0 w-full md:w-1/2 md:mr-4">
           <input
@@ -171,11 +229,15 @@ const Dashboard = () => {
                 >
                   <div className="flex justify-between items-center">
                     <div>
-                      <h3 className="font-medium text-gray-800">{user.name || 'Anonymous'}</h3>
+                      <h3 className="font-medium text-gray-800">
+                        {user.name || user.email.split('@')[0]}
+                      </h3>
                       <p className="text-sm text-gray-600">{user.email}</p>
                       <p className="text-sm">
-                        <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-1"></span>
-                        Online
+                        <span className={`inline-block w-2 h-2 rounded-full mr-1 ${
+                          user.isOnline ? 'bg-green-500' : 'bg-gray-400'
+                        }`}></span>
+                        {user.isOnline ? 'Online' : 'Offline'}
                       </p>
                     </div>
                     <button
