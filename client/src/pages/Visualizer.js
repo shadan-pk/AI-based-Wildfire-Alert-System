@@ -26,7 +26,6 @@ function Visualizer() {
       .then(data => {
         console.log('Fetched scenarios:', data);
         setScenarios(data);
-        // Automatically select first scenario if available
         if (data.length > 0) {
           setSelectedScenario(data[0]);
         }
@@ -37,41 +36,13 @@ function Visualizer() {
       });
   }, []);
 
-  const handleStartSimulation = () => {
-    if (!selectedScenario) {
-      alert('Please select a scenario before starting');
-      return;
-    }
-    
-    setError(null); // Clear any previous errors
-    setIsRunning(true);
-    console.log('Simulation started:', {
-      isRunning: true,
-      selectedScenario,
-      userLocationsCount: userLocations.length,
-      heatmapDataCount: heatmapData.length,
-      action: 'Fetching user locations and heatmap data',
-    });
-  };
-
-  const handleStopSimulation = () => {
-    setIsRunning(false);
-    console.log('Simulation stopped:', {
-      isRunning: false,
-      selectedScenario,
-      userLocationsCount: userLocations.length,
-      heatmapDataCount: heatmapData.length,
-      action: 'Stopping listeners and clearing heatmap',
-    });
-  };
-
-  // Memoized function to fetch heatmap data
+  // Fetch and process heatmap data, then push to Firebase
   const fetchHeatmapData = useCallback(() => {
     if (!selectedScenario) return;
-    
+
     console.log(`Fetching heatmap data for scenario: ${selectedScenario}`);
     setHeatmapRendered(false);
-    
+
     fetch(`http://localhost:5000/api/scenario/${selectedScenario}`)
       .then(res => {
         if (!res.ok) {
@@ -81,15 +52,13 @@ function Visualizer() {
       })
       .then(data => {
         console.log(`Received ${data.length} raw heatmap points`);
-        
+
         // Data validation and normalization
         const processedData = data.map(point => {
-          // Handle nested number values from MongoDB (numberDouble format)
           const lat = parseFloat(point.lat?.$numberDouble || point.lat);
           const lon = parseFloat(point.lon?.$numberDouble || point.lon);
           let prediction = 0;
-          
-          // Handle different prediction formats
+
           if (point.prediction?.$numberInt) {
             prediction = parseInt(point.prediction.$numberInt, 10);
           } else if (point.prediction?.$numberDouble) {
@@ -97,7 +66,7 @@ function Visualizer() {
           } else {
             prediction = parseInt(point.prediction || 0, 10);
           }
-          
+
           return {
             lat,
             lon,
@@ -105,11 +74,27 @@ function Visualizer() {
             metadata: point.metadata || {}
           };
         }).filter(point => !isNaN(point.lat) && !isNaN(point.lon));
-        
+
         console.log(`Processed ${processedData.length} valid heatmap points`);
+
+        // Update local state
         setHeatmapData(processedData);
-        setStats(prev => ({...prev, heatmapPoints: processedData.length}));
+        setStats(prev => ({ ...prev, heatmapPoints: processedData.length }));
         setLastFetchTime(new Date().toISOString());
+
+        // Push to Firebase
+        setDoc(doc(db, 'selectedScenario', 'current'), {
+          scenarioName: selectedScenario,
+          selectedAt: new Date(),
+          heatmapData: processedData
+        })
+          .then(() => {
+            console.log(`Pushed ${processedData.length} points to Firebase for ${selectedScenario}`);
+          })
+          .catch(error => {
+            console.error('Error pushing to Firebase:', error);
+            setError('Failed to update Firebase with scenario data');
+          });
       })
       .catch(error => {
         console.error('Error fetching scenario data:', error);
@@ -117,27 +102,47 @@ function Visualizer() {
       });
   }, [selectedScenario]);
 
-  // Initialize Firebase structure when component mounts
+  // Subscribe to Firebase "selectedScenario/current" for real-time updates
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      doc(db, 'selectedScenario', 'current'),
+      (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const data = docSnapshot.data();
+          setHeatmapData(data.heatmapData || []);
+          setSelectedScenario(data.scenarioName || '');
+          setStats(prev => ({ ...prev, heatmapPoints: data.heatmapData?.length || 0 }));
+          setLastFetchTime(new Date().toISOString());
+        } else {
+          setHeatmapData([]);
+          // Don't reset selectedScenario here to avoid dropdown flicker
+          setStats(prev => ({ ...prev, heatmapPoints: 0 }));
+        }
+      },
+      (error) => {
+        console.error('Error subscribing to selected scenario:', error);
+        setError('Failed to subscribe to scenario updates');
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Initialize Firebase structure for user locations
   const ensureFirebaseStructure = useCallback(async () => {
     try {
-      // This is a workaround for the permission error
       const snapshot = await getDoc(doc(collection(db, 'userLocation'), 'structure_test'));
-      
-      // If it doesn't exist, create it to initialize the structure
       if (!snapshot.exists()) {
         await setDoc(doc(collection(db, 'userLocation'), 'structure_test'), {
           timestamp: new Date(),
           latitude: 0,
           longitude: 0
         });
-        
-        // Create the situation subcollection and SafeOrNot document
         const situationRef = collection(doc(collection(db, 'userLocation'), 'structure_test'), 'situation');
-        await setDoc(doc(situationRef, 'SafeOrNot'), { 
+        await setDoc(doc(situationRef, 'SafeOrNot'), {
           safe: true,
-          initialized: true 
+          initialized: true
         });
-        
         console.log('Created initial Firebase structure');
       }
     } catch (error) {
@@ -150,173 +155,170 @@ function Visualizer() {
     ensureFirebaseStructure();
   }, [ensureFirebaseStructure]);
 
-  // Effect for heatmap data polling
+  // Fetch heatmap data when scenario changes
   useEffect(() => {
-    let intervalId;
-    
-    // Always fetch heatmap data when scenario changes, regardless of running state
     if (selectedScenario) {
       fetchHeatmapData();
     }
-    
-    // Start polling only when simulation is running
-    if (isRunning && selectedScenario) {
-      intervalId = setInterval(fetchHeatmapData, 5000);
-    }
-    
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        console.log('Cleared heatmap data polling interval');
-      }
-    };
-  }, [isRunning, selectedScenario, fetchHeatmapData]);
+  }, [selectedScenario, fetchHeatmapData]);
 
-  // Firebase listener for user locations with error handling
+  // Handle simulation start
+  const handleStartSimulation = () => {
+    if (!selectedScenario) {
+      alert('Please select a scenario before starting');
+      return;
+    }
+    setError(null);
+    setIsRunning(true);
+    console.log('Simulation started:', {
+      isRunning: true,
+      selectedScenario,
+      userLocationsCount: userLocations.length,
+      heatmapDataCount: heatmapData.length,
+      action: 'Fetching user locations',
+    });
+  };
+
+  // Handle simulation stop
+  const handleStopSimulation = () => {
+    setIsRunning(false);
+    console.log('Simulation stopped:', {
+      isRunning: false,
+      selectedScenario,
+      userLocationsCount: userLocations.length,
+      heatmapDataCount: heatmapData.length,
+      action: 'Stopping listeners',
+    });
+  };
+
+  // Firebase listener for user locations
   useEffect(() => {
     let userUnsubscribe;
     let statusUnsubscribes = new Map();
-    
+
     if (isRunning) {
       try {
         const userLocationsCollection = collection(db, 'userLocation');
-        
-        userUnsubscribe = onSnapshot(userLocationsCollection, 
+        userUnsubscribe = onSnapshot(userLocationsCollection,
           async (snapshot) => {
-            try {
-              // Clear previous status listeners
-              statusUnsubscribes.forEach(unsubscribe => unsubscribe());
-              statusUnsubscribes.clear();
+            statusUnsubscribes.forEach(unsubscribe => unsubscribe());
+            statusUnsubscribes.clear();
 
-              const locationsPromises = snapshot.docs
-                .filter(doc => doc.id !== 'structure_test')
-                .map(async (userDoc) => {
-                  const email = userDoc.id;
-                  const data = userDoc.data();
-                  
-                  // Create proper document references
-                  const userDocRef = doc(db, 'userLocation', email);
-                  const statusRef = doc(db, 'userLocation', email, 'status', 'presence');
-                  
-                  const statusUnsubscribe = onSnapshot(statusRef, async (statusDoc) => {
-                    const isOnline = statusDoc.exists() && statusDoc.data().online === true;
-                    
-                    if (!isOnline) {
-                      setUserLocations(prevLocations => {
-                        const updatedLocations = prevLocations.filter(u => u.email !== email);
-                        // Update stats when user goes offline
-                        setStats(prevStats => ({
-                          ...prevStats,
-                          totalUsers: updatedLocations.length,
-                          safeUsers: updatedLocations.filter(u => u.safe === true).length,
-                          unsafeUsers: updatedLocations.filter(u => u.safe === false).length
-                        }));
-                        return updatedLocations;
-                      });
-                    } else {
-                      // Re-fetch user data when they come back online
-                      const userData = (await getDoc(userDocRef)).data();
-                      const situationRef = doc(db, 'userLocation', email, 'situation', 'SafeOrNot');
-                      const safetyDoc = await getDoc(situationRef);
-                      const safeStatus = safetyDoc.exists() ? safetyDoc.data().safe : null;
+            const locationsPromises = snapshot.docs
+              .filter(doc => doc.id !== 'structure_test')
+              .map(async (userDoc) => {
+                const email = userDoc.id;
+                const data = userDoc.data();
+                const userDocRef = doc(db, 'userLocation', email);
+                const statusRef = doc(db, 'userLocation', email, 'status', 'presence');
 
-                      const updatedUser = {
-                        uid: email,
-                        email: email,
-                        lat: userData.latitude || null,
-                        lon: userData.longitude || null,
-                        timestamp: userData.timestamp?.toDate() || new Date(),
-                        safe: safeStatus
-                      };
-
-                      setUserLocations(prevLocations => {
-                        const filtered = prevLocations.filter(u => u.email !== email);
-                        const newLocations = [...filtered, updatedUser];
-                        // Update stats when user data changes
-                        setStats(prevStats => ({
-                          ...prevStats,
-                          totalUsers: newLocations.length,
-                          safeUsers: newLocations.filter(u => u.safe === true).length,
-                          unsafeUsers: newLocations.filter(u => u.safe === false).length
-                        }));
-                        return newLocations;
-                      });
-                    }
-                  });
-                  
-                  statusUnsubscribes.set(email, statusUnsubscribe);
-
-                  // Initial online check
-                  const statusDoc = await getDoc(statusRef);
+                const statusUnsubscribe = onSnapshot(statusRef, async (statusDoc) => {
                   const isOnline = statusDoc.exists() && statusDoc.data().online === true;
-                  
                   if (!isOnline) {
-                    console.log(`User ${email} is offline, skipping`);
-                    return null;
-                  }
+                    setUserLocations(prev => {
+                      const updated = prev.filter(u => u.email !== email);
+                      setStats(prevStats => ({
+                        ...prevStats,
+                        totalUsers: updated.length,
+                        safeUsers: updated.filter(u => u.safe === true).length,
+                        unsafeUsers: updated.filter(u => u.safe === false).length
+                      }));
+                      return updated;
+                    });
+                  } else {
+                    const userData = (await getDoc(userDocRef)).data();
+                    const situationRef = doc(db, 'userLocation', email, 'situation', 'SafeOrNot');
+                    const safetyDoc = await getDoc(situationRef);
+                    const safeStatus = safetyDoc.exists() ? safetyDoc.data().safe : null;
 
-                  // Fetch safety status using correct document reference
-                  const safetyRef = doc(db, 'userLocation', email, 'situation', 'SafeOrNot');
-                  const safetyDoc = await getDoc(safetyRef);
-                  const safeStatus = safetyDoc.exists() ? safetyDoc.data().safe : null;
-                  
-                  return {
-                    uid: email,
-                    email: email,
-                    lat: data.latitude || null,
-                    lon: data.longitude || null,
-                    timestamp: data.timestamp?.toDate() || new Date(),
-                    safe: safeStatus
-                  };
+                    const updatedUser = {
+                      uid: email,
+                      email,
+                      lat: userData.latitude || null,
+                      lon: userData.longitude || null,
+                      timestamp: userData.timestamp?.toDate() || new Date(),
+                      safe: safeStatus
+                    };
+
+                    setUserLocations(prev => {
+                      const filtered = prev.filter(u => u.email !== email);
+                      const newLocations = [...filtered, updatedUser];
+                      setStats(prevStats => ({
+                        ...prevStats,
+                        totalUsers: newLocations.length,
+                        safeUsers: newLocations.filter(u => u.safe === true).length,
+                        unsafeUsers: newLocations.filter(u => u.safe === false).length
+                      }));
+                      return newLocations;
+                    });
+                  }
                 });
-              
-              // Process all valid locations
-              const locations = (await Promise.all(locationsPromises))
-                .filter(Boolean)
-                .filter(user => user.lat !== null && user.lon !== null);
-              
-              // Update stats based on current locations
-              const safeUsers = locations.filter(user => user.safe === true).length;
-              const unsafeUsers = locations.filter(user => user.safe === false).length;
-              
-              setUserLocations(locations);
-              // Use functional update to avoid dependency on stats
-              setStats(prevStats => ({
-                totalUsers: locations.length,
-                safeUsers,
-                unsafeUsers,
-                heatmapPoints: prevStats.heatmapPoints // Preserve existing heatmap points
-              }));
-              
-            } catch (error) {
-              console.error('Error processing user locations:', error);
-            }
-          }
-        );
+
+                statusUnsubscribes.set(email, statusUnsubscribe);
+
+                const statusDoc = await getDoc(statusRef);
+                const isOnline = statusDoc.exists() && statusDoc.data().online === true;
+                if (!isOnline) {
+                  console.log(`User ${email} is offline, skipping`);
+                  return null;
+                }
+
+                const safetyRef = doc(db, 'userLocation', email, 'situation', 'SafeOrNot');
+                const safetyDoc = await getDoc(safetyRef);
+                const safeStatus = safetyDoc.exists() ? safetyDoc.data().safe : null;
+
+                return {
+                  uid: email,
+                  email,
+                  lat: data.latitude || null,
+                  lon: data.longitude || null,
+                  timestamp: data.timestamp?.toDate() || new Date(),
+                  safe: safeStatus
+                };
+              });
+
+            const locations = (await Promise.all(locationsPromises))
+              .filter(Boolean)
+              .filter(user => user.lat !== null && user.lon !== null);
+
+            setUserLocations(locations);
+            setStats(prevStats => ({
+              ...prevStats,
+              totalUsers: locations.length,
+              safeUsers: locations.filter(user => user.safe === true).length,
+              unsafeUsers: locations.filter(user => user.safe === false).length
+            }));
+          });
       } catch (error) {
         console.error('Error setting up Firebase listener:', error);
         setError(`Failed to connect to Firebase: ${error.message}`);
       }
     }
-    
+
     return () => {
-      if (userUnsubscribe) {
-        userUnsubscribe();
-      }
+      if (userUnsubscribe) userUnsubscribe();
       statusUnsubscribes.forEach(unsubscribe => unsubscribe());
       statusUnsubscribes.clear();
     };
-  }, [isRunning]); // Remove stats.heatmapPoints from dependencies
+  }, [isRunning]);
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Wildfire Prediction Visualizer</h1>
-      
+    <div style={{ padding: '20px'}}>
+      <h1
+      style={
+        {
+          fontSize:30,
+          color:"white",
+          marginBottom:20
+        }
+      }
+      >Wildfire Prediction Visualizer</h1>
+
       {error && (
-        <div style={{ 
-          padding: '10px', 
-          marginBottom: '15px', 
-          backgroundColor: '#ffeded', 
+        <div style={{
+          padding: '10px',
+          marginBottom: '15px',
+          backgroundColor: '#ffeded',
           border: '1px solid #ff9999',
           borderRadius: '4px',
           color: '#d32f2f'
@@ -324,14 +326,21 @@ function Visualizer() {
           <strong>Error:</strong> {error}
         </div>
       )}
-      
+
       <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '20px' }}>
         <div>
-          <label htmlFor="scenarioSelect">Select Scenario: </label>
+          <label htmlFor="scenarioSelect"       
+          style={
+        {
+          fontSize:20,
+          color:"white",
+          marginBottom:20
+        }
+      }>Select Scenario: </label>
           <select
             id="scenarioSelect"
             value={selectedScenario}
-            onChange={e => setSelectedScenario(e.target.value)}
+            onChange={(e) => setSelectedScenario(e.target.value)}
             style={{ padding: '5px', marginLeft: '10px' }}
           >
             <option value="">-- Choose a Scenario --</option>
@@ -340,12 +349,12 @@ function Visualizer() {
             ))}
           </select>
         </div>
-        
-        <button 
-          onClick={handleStartSimulation} 
-          disabled={isRunning || !selectedScenario} 
-          style={{ 
-            padding: '10px 20px', 
+
+        <button
+          onClick={handleStartSimulation}
+          disabled={isRunning || !selectedScenario}
+          style={{
+            padding: '10px 20px',
             backgroundColor: isRunning ? '#cccccc' : '#4CAF50',
             color: 'white',
             border: 'none',
@@ -355,11 +364,11 @@ function Visualizer() {
         >
           Start Simulation
         </button>
-        
-        <button 
-          onClick={handleStopSimulation} 
-          disabled={!isRunning} 
-          style={{ 
+
+        <button
+          onClick={handleStopSimulation}
+          disabled={!isRunning}
+          style={{
             padding: '10px 20px',
             backgroundColor: !isRunning ? '#cccccc' : '#f44336',
             color: 'white',
@@ -371,38 +380,30 @@ function Visualizer() {
           Stop Simulation
         </button>
       </div>
-      
-      <div style={{ 
-        marginBottom: '20px', 
-        padding: '15px', 
-        backgroundColor: '#f5f5f5', 
+
+      <div style={{
+        marginBottom: '20px',
+        padding: '15px',
+        backgroundColor: '#f5f5f5',
         borderRadius: '4px',
         display: 'flex',
         justifyContent: 'space-between'
       }}>
+        <div><strong>Active Users:</strong> {stats.totalUsers}</div>
+        <div><strong>Safe Users:</strong> <span style={{ color: 'green' }}>{stats.safeUsers}</span></div>
+        <div><strong>At Risk:</strong> <span style={{ color: 'red' }}>{stats.unsafeUsers}</span></div>
         <div>
-          <strong>Active Users:</strong> {stats.totalUsers}
-        </div>
-        <div>
-          <strong>Safe Users:</strong> <span style={{color: 'green'}}>{stats.safeUsers}</span>
-        </div>
-        <div>
-          <strong>At Risk:</strong> <span style={{color: 'red'}}>{stats.unsafeUsers}</span>
-        </div>
-        <div>
-          <strong>Heatmap Points:</strong> {stats.heatmapPoints} 
-          {heatmapRendered && <span style={{color: 'green'}}> ✓</span>}
+          <strong>Heatmap Points:</strong> {stats.heatmapPoints}
+          {heatmapRendered && <span style={{ color: 'green' }}> ✓</span>}
         </div>
         {lastFetchTime && (
-          <div>
-            <strong>Last Update:</strong> {new Date(lastFetchTime).toLocaleTimeString()}
-          </div>
+          <div><strong>Last Update:</strong> {new Date(lastFetchTime).toLocaleTimeString()}</div>
         )}
       </div>
-      
+
       <div style={{ border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
-        <MapComponent 
-          userLocations={userLocations} 
+        <MapComponent
+          userLocations={userLocations}
           heatmapData={heatmapData}
           onHeatmapRender={(pointCount) => {
             console.log(`Heatmap rendered with ${pointCount} points`);
@@ -410,11 +411,11 @@ function Visualizer() {
           }}
         />
       </div>
-      
+
       <div style={{ marginTop: '15px', fontSize: '0.9em', color: '#fafafa' }}>
         <p>
-          <strong>How it works:</strong> User locations are compared against wildfire prediction 
-          data. Green markers indicate safe users, while red markers show users in potential 
+          <strong>How it works:</strong> User locations are compared against wildfire prediction
+          data. Green markers indicate safe users, while red markers show users in potential
           danger areas. Safety status is updated every 5 seconds and stored in Firebase.
         </p>
       </div>
