@@ -96,5 +96,52 @@ app.post('/api/store-prediction', async (req, res) => {
     res.status(500).send('Error storing prediction');
   }
 });
+// API to set the selected scenario and update Firebase
+app.post('/api/set-selected-scenario', async (req, res) => {
+  const { scenarioName } = req.body;
+
+  if (!scenarioName) {
+    return res.status(400).send('Scenario name is required');
+  }
+
+  try {
+    if (!predictionDb) {
+      throw new Error('MongoDB connection not ready');
+    }
+
+    // Fetch heatmap data from MongoDB
+    const collection = predictionDb.collection(scenarioName);
+    const data = await collection.find({}).toArray();
+
+    // Process MongoDB data into a clean format for Firebase
+    const heatmapData = data.map(point => {
+      const lat = parseFloat(point.lat?.$numberDouble || point.lat);
+      const lon = parseFloat(point.lon?.$numberDouble || point.lon);
+      let prediction = 0;
+      if (point.prediction?.$numberInt) {
+        prediction = parseInt(point.prediction.$numberInt, 10);
+      } else if (point.prediction?.$numberDouble) {
+        prediction = parseFloat(point.prediction.$numberDouble);
+      } else {
+        prediction = parseInt(point.prediction || 0, 10);
+      }
+      return { lat, lon, prediction };
+    }).filter(point => !isNaN(point.lat) && !isNaN(point.lon));
+
+    // Update Firebase "selectedScenario" document
+    await db.collection('selectedScenario').doc('current').set({
+      scenarioName,
+      selectedAt: new Date(),
+      heatmapData
+    });
+
+    console.log(`Updated selectedScenario with ${heatmapData.length} points for ${scenarioName}`);
+    res.status(200).send('Selected scenario updated');
+  } catch (error) {
+    console.error('Error setting selected scenario:', error.message);
+    res.status(500).send('Error setting selected scenario');
+  }
+});
+
 
 module.exports = app;

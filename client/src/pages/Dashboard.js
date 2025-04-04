@@ -1,189 +1,327 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { 
+  collection, 
+  doc, 
+  getDoc, 
+  onSnapshot,
+  setDoc,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { db } from '../FirebaseConfig'; // Adjust this import to match your firebase config
+import UserReports from './UserReports'; // Import the new component
+import UserDetails from './UserDetails'; // Import the new UserDetails component
 
 const Dashboard = () => {
-  const [users, setUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
   const [alertUserId, setAlertUserId] = useState(null);
   const [message, setMessage] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [loading, setLoading] = useState(true);
+  const [allUsers, setAllUsers] = useState([]);
+  const [activeTab, setActiveTab] = useState('online');
 
   useEffect(() => {
-    const fetchUsers = async () => {
+    setLoading(true);
+    const userLocationsRef = collection(db, "userLocation");
+    let userStatusListeners = new Map();
+
+    const unsubscribe = onSnapshot(userLocationsRef, async (snapshot) => {
       try {
-        const res = await axios.get(`${process.env.REACT_APP_API_URL}/active-users`);
-        setUsers(res.data);
+        // Clear previous status listeners
+        userStatusListeners.forEach(unsubscribe => unsubscribe());
+        userStatusListeners.clear();
+
+        // Process all users first
+        const processedUsers = await Promise.all(snapshot.docs
+          .filter(doc => doc.id !== 'structure_test')
+          .map(async (userDoc) => {
+            const userEmail = userDoc.id;
+            const locationData = userDoc.data();
+            
+            // Get user details
+            const userDetailsDoc = await getDoc(doc(db, "users", userEmail));
+            const userData = userDetailsDoc.exists() ? userDetailsDoc.data() : {};
+            
+            // Get initial online status
+            const presenceRef = doc(db, "userLocation", userEmail, "status", "presence");
+            const presenceDoc = await getDoc(presenceRef);
+            const isOnline = presenceDoc.exists() && presenceDoc.data().online === true;
+            
+            return {
+              email: userEmail,
+              name: userData.displayName || `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || userEmail.split('@')[0],
+              location: {
+                latitude: locationData.latitude,
+                longitude: locationData.longitude
+              },
+              timestamp: locationData.timestamp,
+              isOnline,
+              phone: userData.phone,
+              address: userData.address,
+              uid: userEmail
+            };
+          }));
+
+        // Update all users at once
+        setAllUsers(processedUsers);
+        setLoading(false);
+
+        // Set up status listeners after initial load
+        processedUsers.forEach(user => {
+          const presenceRef = doc(db, "userLocation", user.email, "status", "presence");
+          const statusListener = onSnapshot(presenceRef, (statusDoc) => {
+            const isOnline = statusDoc.exists() && statusDoc.data().online === true;
+            
+            setAllUsers(prev => {
+              const updatedUsers = prev.map(u => 
+                u.email === user.email ? { ...u, isOnline } : u
+              );
+              
+              // Clear selected user if they go offline and we're in online tab
+              if (!isOnline && activeTab === 'online' && selectedUser?.email === user.email) {
+                setSelectedUser(null);
+              }
+              
+              return updatedUsers;
+            });
+          });
+        
+          userStatusListeners.set(user.email, statusListener);
+        });
+
       } catch (error) {
-        console.error('Error fetching active users:', error);
+        console.error('Error processing users:', error);
+        setLoading(false);
       }
+    });
+
+    return () => {
+      unsubscribe();
+      userStatusListeners.forEach(unsubscribe => unsubscribe());
+      userStatusListeners.clear();
     };
-    fetchUsers();
   }, []);
 
+  useEffect(() => {
+    // Clear selected user if they don't match the current tab filter
+    if (selectedUser) {
+      const isVisible = 
+        activeTab === 'all' || 
+        (activeTab === 'online' && selectedUser.isOnline) ||
+        (activeTab === 'offline' && !selectedUser.isOnline);
+      
+      if (!isVisible) {
+        setSelectedUser(null);
+      }
+    }
+  }, [activeTab, selectedUser]);
+  
   const handleSendAlert = async (userId) => {
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/send-alert`, {
-        userId,
-        message,
+      const alertId = `alert_${Date.now()}`;
+      const alertRef = doc(db, "userLocation", userId, "alerts", alertId);
+      
+      await setDoc(alertRef, {
+        message: message,
+        timestamp: serverTimestamp(),
+        type: 'admin_alert',
+        sender: 'system',
+        severity: 'high',
+        read: false
       });
+      
       setAlertUserId(null);
       setMessage('');
       alert('Alert sent successfully!');
     } catch (error) {
       console.error('Error sending alert:', error);
-      alert('Failed to send alert.');
+      alert('Failed to send alert: ' + error.message);
     }
   };
 
+  const filteredUsers = allUsers
+    .filter(user => {
+      const userName = user.name || 'Unknown User';
+      const matchesSearch = userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesTab = activeTab === 'all' || 
+                        (activeTab === 'online' && user.isOnline) ||
+                        (activeTab === 'offline' && !user.isOnline);
+      return matchesSearch && matchesTab;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'name') {
+        return (a.name || 'Unknown User').localeCompare(b.name || 'Unknown User');
+      }
+      return (a.email || '').localeCompare(b.email || '');
+    });
+
   return (
-    <div style={styles.container}>
-      <h1 style={styles.header}>User Dashboard</h1>
-      <h2 style={styles.subHeader}>Active Users</h2>
-      {users.length === 0 ? (
-        <p style={styles.noData}>No active users found.</p>
-      ) : (
-        <ul style={styles.userList}>
-          {users.map((user) => (
-            <li key={user.id} style={styles.userItem}>
-              <p style={styles.text}>Name: {user.name || 'N/A'}</p>
-              <p style={styles.text}>Email: {user.email || 'N/A'}</p>
-              <button
-                onClick={() => setAlertUserId(user.id)}
-                style={styles.button}
-              >
-                Send Alert
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="p-6 bg-gray-100 min-h-[calc(100vh-4rem)]">
+      <h1 className="text-3xl font-bold mb-6 text-gray-800">User Management Dashboard</h1>
+      
+      {/* Main content wrapper */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[calc(100vh-11rem)]">
+        {/* Left Section - User Management */}
+        <div className="bg-white rounded-lg shadow p-6 max-h-[calc(100vh-11rem)] overflow-hidden">
+          <h2 className="text-2xl font-semibold mb-4 text-gray-800">User Management</h2>
+          
+          {/* Status Tabs */}
+          <div className="flex space-x-2 mb-4">
+            <button
+              onClick={() => setActiveTab('online')}
+              className={`px-4 py-2 rounded-lg ${
+                activeTab === 'online' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Online Users ({allUsers.filter(u => u.isOnline).length})
+            </button>
+            <button
+              onClick={() => setActiveTab('offline')}
+              className={`px-4 py-2 rounded-lg ${
+                activeTab === 'offline' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Offline Users ({allUsers.filter(u => !u.isOnline).length})
+            </button>
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`px-4 py-2 rounded-lg ${
+                activeTab === 'all' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              All Users ({allUsers.length})
+            </button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Users List */}
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <p>Loading users...</p>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="flex justify-center items-center h-64">
+              <p className="text-gray-500">No users found.</p>
+            </div>
+          ) : (
+            <div className="overflow-y-auto max-h-[calc(100vh-24rem)]">
+              {filteredUsers.map((user) => (
+                <div 
+                  key={user.email} 
+                  className={`p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors ${
+                    selectedUser?.email === user.email ? 'bg-blue-50' : ''
+                  }`}
+                  onClick={() => setSelectedUser(user)}
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="font-medium text-gray-800">
+                        {user.name || user.email.split('@')[0]}
+                      </h3>
+                      <p className="text-sm text-gray-600">{user.email}</p>
+                      <p className="text-sm">
+                        <span className={`inline-block w-2 h-2 rounded-full mr-1 ${
+                          user.isOnline ? 'bg-green-500' : 'bg-gray-400'
+                        }`}></span>
+                        {user.isOnline ? 'Online' : 'Offline'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAlertUserId(user.uid);
+                      }}
+                      className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors text-sm"
+                    >
+                      Alert
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right Section - User Information */}
+
+        
+        <div className="bg-white rounded-lg shadow max-h-[calc(100vh-11rem)] overflow-hidden">
+          {selectedUser ? (
+            <div className="h-full">
+              <div className="p-6 border-b">
+                <h2 className="text-2xl font-semibold text-gray-800">User Information</h2>
+              </div>
+              
+              <div className="p-6">
+                <UserDetails selectedUser={selectedUser} db={db} />
+                
+                <div className="mt-6">
+                  <h3 className="text-xl font-semibold mb-4 text-gray-700">User Reports</h3>
+                  
+                  <UserReports selectedUser={selectedUser} />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-center items-center h-full min-h-[calc(100vh-16rem)]">
+              <p className="text-gray-500">Select a user to view details</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Alert Modal */}
       {alertUserId && (
-        <div style={styles.alertBox}>
-          <h3 style={styles.alertHeader}>Send Alert to User</h3>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Enter alert message"
-            style={styles.textarea}
-          />
-          <div style={styles.buttonGroup}>
-            <button
-              onClick={() => handleSendAlert(alertUserId)}
-              style={styles.sendButton}
-            >
-              Send
-            </button>
-            <button
-              onClick={() => {
-                setAlertUserId(null);
-                setMessage('');
-              }}
-              style={styles.cancelButton}
-            >
-              Cancel
-            </button>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h3 className="text-xl font-semibold mb-4">Send Alert</h3>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Enter alert message"
+              className="w-full p-2 border border-gray-300 rounded mb-4 h-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setAlertUserId(null);
+                  setMessage('');
+                }}
+                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSendAlert(alertUserId)}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                disabled={!message.trim()}
+              >
+                Send
+              </button>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
-};
-
-const styles = {
-  container: {
-    padding: '20px',
-    maxWidth: '1000px',
-    margin: '0 auto',
-    backgroundColor: '#f9f9f9',
-    borderRadius: '8px',
-    boxShadow: '0 2px 5px rgba(0, 0, 0, 0.1)',
-  },
-  header: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: '20px',
-    textAlign: 'center',
-  },
-  subHeader: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: '15px',
-  },
-  noData: {
-    fontSize: '16px',
-    color: '#666',
-    textAlign: 'center',
-  },
-  userList: {
-    listStyle: 'none',
-    padding: 0,
-  },
-  userItem: {
-    marginBottom: '15px',
-    padding: '15px',
-    backgroundColor: '#fff',
-    borderRadius: '6px',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-  },
-  text: {
-    fontSize: '14px',
-    color: '#666',
-    margin: '5px 0',
-  },
-  button: {
-    padding: '8px 16px',
-    fontSize: '14px',
-    color: '#fff',
-    backgroundColor: '#007bff',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-  },
-  alertBox: {
-    marginTop: '20px',
-    padding: '15px',
-    backgroundColor: '#fff',
-    borderRadius: '6px',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-  },
-  alertHeader: {
-    fontSize: '16px',
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: '10px',
-  },
-  textarea: {
-    width: '100%',
-    height: '100px',
-    padding: '10px',
-    fontSize: '14px',
-    borderRadius: '4px',
-    border: '1px solid #ccc',
-    resize: 'vertical',
-    marginBottom: '10px',
-  },
-  buttonGroup: {
-    display: 'flex',
-    gap: '10px',
-  },
-  sendButton: {
-    padding: '8px 16px',
-    fontSize: '14px',
-    color: '#fff',
-    backgroundColor: '#28a745',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-  },
-  cancelButton: {
-    padding: '8px 16px',
-    fontSize: '14px',
-    color: '#fff',
-    backgroundColor: '#dc3545',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-  },
 };
 
 export default Dashboard;

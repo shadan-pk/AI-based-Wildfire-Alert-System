@@ -33,12 +33,12 @@ const unsafeIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// Helper component to manage map view and updates
-function MapUpdater({ userLocations, heatmapData }) {
+// Combined map controller component that handles both view updates and heatmap
+function MapController({ userLocations, heatmapData, onHeatmapRender }) {
   const map = useMap();
   
+  // Set initial view based on data
   useEffect(() => {
-    // If we have users, focus on them
     if (heatmapData && heatmapData.length > 0) {
       const validPoints = heatmapData.filter(point => {
         const lat = parseFloat(point.lat?.$numberDouble || point.lat);
@@ -55,14 +55,29 @@ function MapUpdater({ userLocations, heatmapData }) {
       }
     }
   }, [userLocations, heatmapData, map]);
-  
-  return null;
-}
 
-// Separate component for the heatmap layer
-function HeatmapLayer({ map, heatmapData }) {
+  // Calculate intensity based on prediction and metadata
+  const calculateIntensity = (prediction, metadata) => {
+    // Base intensity from prediction
+    const baseIntensity = prediction === 1 ? 0.8 : 0.2;
+    
+    // Factor in additional metadata if available
+    let modifier = 1.0;
+    
+    if (metadata) {
+      // Apply modifiers based on factors like:
+      if (metadata.windSpeed) modifier *= (1 + (metadata.windSpeed / 100));
+      if (metadata.temperature) modifier *= (1 + ((metadata.temperature - 25) / 50));
+      if (metadata.humidity) modifier *= (1 - (metadata.humidity / 200));
+    }
+    
+    return Math.min(1.0, baseIntensity * modifier);
+  };
+  
+  // Handle heatmap rendering
   useEffect(() => {
     if (!map || !heatmapData || heatmapData.length === 0) {
+      console.log('Map not initialized or no heatmap data available');
       return;
     }
     
@@ -70,64 +85,77 @@ function HeatmapLayer({ map, heatmapData }) {
     map.eachLayer(layer => {
       if (layer._heat) {
         map.removeLayer(layer);
+        console.log('Removed existing heatmap layer');
       }
     });
-
-    console.log('Raw heatmap data:', heatmapData);
     
+    console.log('Generating heatmap with data:', heatmapData);
+    
+    // Check if leaflet.heat is loaded
     if (!L.heatLayer) {
-      console.error('Leaflet.heat is not properly initialized');
+      console.error('L.heatLayer is not available! Make sure leaflet.heat is properly loaded.');
       return;
     }
-    console.log('Leaflet.heat is available');
     
-    const heatPoints = heatmapData
-      .map(point => {
-        const lat = parseFloat(point.lat?.$numberDouble || point.lat);
-        const lon = parseFloat(point.lon?.$numberDouble || point.lon);
-        const prediction = parseInt(point.prediction?.$numberInt || point.prediction, 10);
+    // Process and filter heatmap points
+    const heatPoints = heatmapData.map(point => {
+      const lat = parseFloat(point.lat?.$numberDouble || point.lat);
+      const lon = parseFloat(point.lon?.$numberDouble || point.lon);
+      const prediction = parseInt(point.prediction?.$numberInt || point.prediction, 10);
+      
+      // More realistic intensity scaling with slight randomization for natural look
+      const intensity = calculateIntensity(prediction, point.metadata);
+      const naturalizedIntensity = intensity * (0.9 + Math.random() * 0.2); // Add +/-10% variation
+      
+      return [lat, lon, naturalizedIntensity];
+    }).filter(point => !isNaN(point[0]) && !isNaN(point[1]));
+    
+    if (heatPoints.length === 0) {
+      console.warn('No valid heatmap points generated');
+    } else {
+      console.log(`Adding heatmap with ${heatPoints.length} points`, heatPoints);
+      
+      try {
+        const heatLayer = L.heatLayer(heatPoints, {
+          radius: 25, 
+          blur: 15,
+          maxZoom: 17,
+          minOpacity: 0.3,
+          max: 1.0,
+          gradient: {
+            0.1: 'blue',
+            0.3: 'lime',
+            0.5: 'yellow',
+            0.7: 'orange',
+            0.9: 'red'
+          }
+        }).addTo(map);
         
-        // FIXED: Order should be [latitude, longitude, intensity] for Leaflet.heat
-        return [lat, lon, prediction === 1 ? 0.8 : 0.2];
-      })
-      .filter(point => !isNaN(point[0]) && !isNaN(point[1]));
-
-    if (heatPoints.length > 0) {
-      console.log('Processed heat points:', heatPoints);
-      
-      const heatLayer = L.heatLayer(heatPoints, {
-        radius: 25, 
-        blur: 15,
-        maxZoom: 17,
-        minOpacity: 0.3,
-        max: 1.0,
-        gradient: {
-          0.1: 'blue',
-          0.3: 'lime',
-          0.5: 'yellow',
-          0.7: 'orange',
-          0.9: 'red'
+        console.log('Heatmap layer added successfully');
+        
+        if (onHeatmapRender) {
+          onHeatmapRender(heatPoints.length);
         }
-      }).addTo(map);
-      
-      return () => {
-        if (map) {
-          map.removeLayer(heatLayer);
-        }
-      };
+        
+        return () => {
+          if (map) {
+            map.removeLayer(heatLayer);
+            console.log('Heatmap layer removed in cleanup');
+          }
+        };
+      } catch (error) {
+        console.error('Error creating heatmap layer:', error);
+      }
     }
-    
-  }, [map, heatmapData]);
+  }, [map, heatmapData, onHeatmapRender]);
   
   return null;
 }
 
-function MapComponent({ userLocations, heatmapData }) {
-  const mapRef = useRef();
+function MapComponent({ userLocations, heatmapData, onHeatmapRender }) {
   const DEFAULT_CENTER = [11.038216, 76.262928];
   const DEFAULT_ZOOM = 13;
   const [userSafetyStatus, setUserSafetyStatus] = useState({});
-  const [mapInstance, setMapInstance] = useState(null);
   
   // Calculate user safety based on heatmap proximity
   useEffect(() => {
@@ -136,7 +164,7 @@ function MapComponent({ userLocations, heatmapData }) {
     console.log('Calculating safety status for users');
     
     const safetyUpdates = {};
-    const DANGER_THRESHOLD = 0.05; // Distance threshold in degrees (approx 5km)
+    const DANGER_THRESHOLD = 0.00007; // Distance threshold in degrees (approx 5m)
     
     userLocations.forEach(user => {
       try {
@@ -222,16 +250,12 @@ function MapComponent({ userLocations, heatmapData }) {
   };
 
   return (
-      <MapContainer
-        center={DEFAULT_CENTER}
-        zoom={DEFAULT_ZOOM}
-        style={{ height: '700px', width: '100%' }}
-        ref={mapRef}
-        whenReady={() => {
-          setMapInstance(mapRef.current);
-        }}
-        preferCanvas={true}
-      >
+    <MapContainer
+      center={DEFAULT_CENTER}
+      zoom={DEFAULT_ZOOM}
+      style={{ height: '700px', width: '100%' }}
+      preferCanvas={true} // Use Canvas rendering for better performance with heatmaps
+    >
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -243,8 +267,12 @@ function MapComponent({ userLocations, heatmapData }) {
         opacity={0.3}
       />
       
-      {/* Always render heatmap regardless of user presence */}
-      {mapInstance && <HeatmapLayer map={mapInstance} heatmapData={heatmapData} />}
+      {/* Unified controller component for both view updates and heatmap */}
+      <MapController 
+        userLocations={userLocations} 
+        heatmapData={heatmapData}
+        onHeatmapRender={onHeatmapRender}
+      />
       
       {userLocations && userLocations.map(user => {
         const isSafe = userSafetyStatus[user.uid]?.safe;
@@ -269,8 +297,6 @@ function MapComponent({ userLocations, heatmapData }) {
           )
         );
       })}
-      
-      <MapUpdater userLocations={userLocations} heatmapData={heatmapData} />
     </MapContainer>
   );
 }
