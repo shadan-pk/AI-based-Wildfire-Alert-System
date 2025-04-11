@@ -3,16 +3,16 @@ import axios from 'axios';
 
 const SimulationForm = ({ lat, lon, onSubmit }) => {
   const [formData, setFormData] = useState({
-    temperature_2m: '0',
-    relative_humidity_2m: '0',
+    temperature_2m: '32',
+    relative_humidity_2m: '28',
     wind_speed_10m: '0',
-    precipitation: '0',
-    FFMC: '0',
-    DMC: '0',
-    DC: '0',
-    ISI: '0',
-    BUI: '0',
-    FWI: '0',
+    precipitation: '11',
+    FFMC: '101',
+    DMC: '184',
+    DC: '1000',
+    ISI: '14',
+    BUI: '168',
+    FWI: '49',
   });
 
   const handleChange = (e) => {
